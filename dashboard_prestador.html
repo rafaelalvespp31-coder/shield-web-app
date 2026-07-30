@@ -2592,7 +2592,7 @@ function randomDemand(){
 
 let currentlyRenderedDemandId = null;
 
-function renderDemandCard(){
+async function renderDemandCard(){
   const card = document.getElementById('demandCard');
   if(!online){
     card.classList.remove('demand-alert', 'vanta-black-card');
@@ -2600,11 +2600,33 @@ function renderDemandCard(){
     currentlyRenderedDemandId = null;
     return;
   }
-  if(pendingDemands.length === 0){
-    card.classList.remove('demand-alert', 'vanta-black-card');
-    card.innerHTML = `<div class="empty-state">Nenhuma demanda no momento. Aguardando novas solicitações...</div>`;
-    currentlyRenderedDemandId = null;
-    return;
+
+  try {
+    const { data: demandasReais, error } = await sb
+      .from('demandas')
+      .select('*')
+      .eq('status', 'disponivel');
+
+    if (error || !demandasReais || demandasReais.length === 0) {
+      card.classList.remove('demand-alert', 'vanta-black-card');
+      card.innerHTML = `<div class="empty-state">Nenhuma demanda no momento. Aguardando novas solicitações...</div>`;
+      currentlyRenderedDemandId = null;
+      return;
+    }
+
+    const d = demandasReais[0];
+    
+    card.classList.add('demand-alert', 'vanta-black-card');
+    card.innerHTML = `
+      <div class="demand-title">${d.tipo || 'Serviço'}</div>
+      <div class="demand-info">Local: ${d.local || d.endereco || 'Endereço não informado'}</div>
+      <div class="demand-value">R$ ${d.valor ? Number(d.valor).toFixed(2) : '0,00'}</div>
+      <div class="demand-desc">${d.descricao || 'Sem descrição adicional.'}</div>
+    `;
+    currentlyRenderedDemandId = d.id;
+
+  } catch (err) {
+    console.error("Erro ao buscar demandas reais:", err);
   }
   const d = pendingDemands[0];
 
