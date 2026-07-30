@@ -3145,15 +3145,27 @@ function App() {
       className: "text-slate-400 text-sm"
     }, "Carregando..."));
   }
+  const sairDeVerdade = async () => {
+    try {
+      await sb.auth.signOut();
+    } catch (e) {}
+    setCurrentUserId(null);
+    setCompanyId(null);
+    setVinculoInfo({
+      empresaNome: null,
+      statusAprovacao: null
+    });
+    setScreen('home');
+  };
   if (screen === 'providerDashboard') {
     return /*#__PURE__*/React.createElement(ProviderDashboard, {
-      onBack: () => setScreen('home'),
+      onBack: sairDeVerdade,
       providerId: currentUserId
     });
   }
   if (screen === 'prestadorVinculadoDashboard') {
     return /*#__PURE__*/React.createElement(PrestadorVinculadoDashboard, {
-      onBack: () => setScreen('home'),
+      onBack: sairDeVerdade,
       providerId: currentUserId,
       empresaNome: vinculoInfo.empresaNome,
       statusAprovacao: vinculoInfo.statusAprovacao
@@ -3161,13 +3173,13 @@ function App() {
   }
   if (screen === 'clientDashboard') {
     return /*#__PURE__*/React.createElement(ClientDashboard, {
-      onBack: () => setScreen('home'),
+      onBack: sairDeVerdade,
       clientId: currentUserId
     });
   }
   if (screen === 'empresaDashboard') {
     return /*#__PURE__*/React.createElement(EmpresaDashboard, {
-      onBack: () => setScreen('home'),
+      onBack: sairDeVerdade,
       companyId: companyId
     });
   }
