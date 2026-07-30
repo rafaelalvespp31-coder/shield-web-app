@@ -1360,26 +1360,35 @@ function LoginModal({ tone, role, onClose, onLoginSuccess }) {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
-  const submit = async (e) => {
+const submit = async (e) => {
     e.preventDefault();
     const errs = {};
-    if (!/^\S+@\S+\.\S+$/.test(form.email)) errs.email = 'E-mail inválido';
+    if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = 'E-mail inválido';
     if (form.senha.length < 1) errs.senha = 'Informe sua senha';
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
     setLoading(true);
     try {
-      const { data, error } = await sb.auth.signInWithPassword({ email: form.email, password: form.senha });
-      if (error) throw error;
-      onLoginSuccess(data);
+      const resultado = await login(sb, { 
+        email: form.email, 
+        senha: form.senha, 
+        roleClicado: role 
+      });
+
+      if (!resultado.success) {
+        setErrors({ senha: resultado.error || 'Não foi possível entrar. Verifique seus dados.' });
+        setLoading(false);
+        return;
+      }
+
+      onLoginSuccess(resultado);
     } catch (err) {
       setErrors({ senha: (err && err.message) || 'Não foi possível entrar. Verifique seus dados.' });
     } finally {
       setLoading(false);
     }
   };
-
   return (
     <Modal tone={tone} title={role === 'prestador' ? 'Entrar como Prestador' : role === 'empresa' ? 'Entrar como Empresa' : 'Entrar como Cliente'} onClose={onClose}>
       <form onSubmit={submit}>
