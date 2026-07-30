@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Painel da Empresa - ShielD Security</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overscroll-behavior: none; }
+  body {
+    margin: 0;
+    font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+    background: #060f0d;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    position: relative;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  /* ---------------- Fundo animado (mesma linguagem dos outros paineis, tom esmeralda) ---------------- */
+  .tech-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .room-blur {
+    position: absolute; inset: -40px;
+    background:
+      radial-gradient(ellipse 520px 440px at 10% 20%, rgba(16,185,129,0.16), transparent 60%),
+      radial-gradient(ellipse 460px 520px at 4% 72%, rgba(6,25,22,0.8), transparent 65%),
+      radial-gradient(ellipse 500px 440px at 94% 28%, rgba(52,211,153,0.14), transparent 60%),
+      radial-gradient(ellipse 480px 520px at 96% 82%, rgba(5,18,16,0.8), transparent 65%),
+      linear-gradient(160deg, #0a1e1a 0%, #081712 35%, #061210 60%, #081814 100%);
+    filter: blur(16px);
+  }
+  .city-map { position: absolute; inset: 0; width: 100%; height: 100%; filter: blur(5px); opacity: 0.55; }
+  .map-dim-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.72); pointer-events: none; }
+  .roads path { fill: none; stroke: #10b981; stroke-width: 2; stroke-linecap: round; opacity: 0.8; stroke-dasharray: 1 7; }
+  .roads-secondary path { fill: none; stroke: #10b981; stroke-width: 1; stroke-linecap: round; opacity: 0.38; stroke-dasharray: 1 5; }
+  .node-chip { fill: rgba(16,185,129,0.5); stroke: rgba(52,211,153,0.8); stroke-width: 0.6; }
+  .node-chip-lit { fill: rgba(209,250,229,0.85); animation: nodeBlink 6s ease-in-out infinite; }
+  @keyframes nodeBlink { 0%, 40%, 100% { opacity: 0.5; } 20% { opacity: 1; } }
+  .sparkle { position: absolute; color: rgba(209,250,229,0.85); filter: drop-shadow(0 0 6px rgba(52,211,153,0.6)); animation: twinkle 2.6s ease-in-out infinite; }
+  @keyframes twinkle { 0%,100%{ opacity:0.2; transform:scale(0.8);} 50%{ opacity:1; transform:scale(1.1);} }
+
+  /* ---------------- Painel principal (glass, tom esmeralda) ---------------- */
+  .panel {
+    width: 460px; max-width: 100%;
+    min-height: 100vh;
+    padding: 22px 18px 100px;
+    position: relative;
+    background:
+      linear-gradient(180deg, rgba(12,36,30,0.55) 0%, rgba(8,26,22,0.6) 30%, rgba(6,20,17,0.7) 100%);
+    backdrop-filter: blur(2px) saturate(140%);
+    -webkit-backdrop-filter: blur(2px) saturate(140%);
+    color: #eafff5;
+  }
+
+  .brand-row { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .brand-logo {
+    width: 40px; height: 40px; border-radius: 12px;
+    background: radial-gradient(circle at 30% 30%, #34d399, #065f46 75%);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 1px rgba(52,211,153,0.4), 0 4px 14px rgba(0,0,0,0.5);
+    font-weight: 800; color: #04120d; font-size: 15px;
+  }
+  .brand-name { font-size: 15px; font-weight: 800; letter-spacing: 0.4px; color: #f0fff9; }
+  .brand-sub { font-size: 10.5px; color: rgba(209,250,229,0.65); letter-spacing: 0.6px; text-transform: uppercase; }
+
+  .company-header {
+    background: rgba(255,255,255,0.045);
+    border: 1px solid rgba(52,211,153,0.25);
+    border-radius: 20px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .company-name-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .company-name { font-size: 17px; font-weight: 800; color: #ffffff; }
+  .company-sub { font-size: 12px; color: rgba(209,250,229,0.6); margin-top: 2px; }
+  .verified-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(16,185,129,0.16); border: 1px solid rgba(52,211,153,0.45);
+    color: #6ee7b7; font-size: 10.5px; font-weight: 700;
+    padding: 4px 10px; border-radius: 999px; margin-top: 10px;
+    letter-spacing: 0.3px;
+  }
+  .verified-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: #34d399; box-shadow: 0 0 6px #34d399; }
+
+  /* ---------------- Cards de estatistica ---------------- */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .stat-card {
+    background: rgba(255,255,255,0.045);
+    border: 1px solid rgba(52,211,153,0.18);
+    border-radius: 16px; padding: 14px;
+  }
+  .stat-value { font-size: 20px; font-weight: 800; color: #ffffff; }
+  .stat-label { font-size: 10.5px; color: rgba(209,250,229,0.6); margin-top: 3px; letter-spacing: 0.3px; }
+  .stat-card.wide { grid-column: span 2; display: flex; align-items: center; justify-content: space-between; }
+
+  /* ---------------- Secoes / cards genericos ---------------- */
+  .section-title {
+    font-size: 12px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;
+    color: rgba(209,250,229,0.55); margin: 20px 2px 10px;
+  }
+  .card {
+    background: rgba(255,255,255,0.045);
+    border: 1px solid rgba(52,211,153,0.18);
+    border-radius: 16px; padding: 14px; margin-bottom: 10px;
+  }
+  .card-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    border: none; border-radius: 12px; padding: 11px 16px;
+    font-size: 13px; font-weight: 700; cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-emerald { background: linear-gradient(135deg, #34d399, #059669); color: #04120d; }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* ---------------- Banner de alerta de pânico (empresa) ---------------- */
+  .panic-alert-banner {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+    background: linear-gradient(90deg, #7f1d1d, #b91c1c);
+    color: #fff; padding: 14px 16px; font-size: 13px; font-weight: 800;
+    display: none; align-items: center; justify-content: space-between; gap: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    animation: panicPulse 1.2s ease-in-out infinite;
+  }
+  .panic-alert-banner.show { display: flex; }
+  @keyframes panicPulse { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.25); } }
+  .panic-alert-banner button {
+    background: #fff; color: #7f1d1d; border: none; border-radius: 8px;
+    padding: 7px 12px; font-size: 11.5px; font-weight: 800; cursor: pointer;
+  }
+  .btn-ghost { background: rgba(255,255,255,0.06); color: #d1fae5; border: 1px solid rgba(52,211,153,0.3); }
+  .btn-block { width: 100%; }
+
+  /* ---------------- Vigilantes / equipe ---------------- */
+  .member-card { display: flex; align-items: center; gap: 12px; }
+  .aprovacao-card { border-color: rgba(251,191,36,0.35) !important; background: rgba(251,191,36,0.06) !important; }
+  .aprovacao-actions { display: flex; gap: 6px; }
+  .aprovacao-actions button {
+    font-size: 10.5px; font-weight: 800; padding: 6px 10px; border-radius: 8px; border: none; cursor: pointer; font-family: inherit;
+  }
+  .btn-aprovar { background: linear-gradient(135deg, #34d399, #059669); color: #04120d; }
+  .btn-recusar { background: rgba(248,113,113,0.14); color: #fca5a5; border: 1px solid rgba(248,113,113,0.3) !important; }
+  .member-avatar {
+    width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, #134e4a, #065f46);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; color: #d1fae5; font-size: 14px;
+    border: 1px solid rgba(52,211,153,0.4);
+  }
+  .member-name { font-size: 13.5px; font-weight: 700; color: #ffffff; }
+  .member-meta { font-size: 11px; color: rgba(209,250,229,0.55); margin-top: 2px; }
+  .status-chip { font-size: 9.5px; font-weight: 800; padding: 3px 8px; border-radius: 999px; letter-spacing: 0.3px; text-transform: uppercase; }
+  .status-online { background: rgba(52,211,153,0.18); color: #6ee7b7; }
+  .status-pending { background: rgba(251,191,36,0.16); color: #fcd34d; }
+  .status-off { background: rgba(148,163,184,0.14); color: #94a3b8; }
+
+  /* ---------------- Demandas ---------------- */
+  .demand-card .demand-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .demand-tag { font-size: 10px; font-weight: 800; color: #6ee7b7; background: rgba(16,185,129,0.14); padding: 3px 8px; border-radius: 8px; }
+  .demand-desc { font-size: 12.5px; color: rgba(234,255,245,0.85); line-height: 1.5; }
+  .demand-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .demand-actions .btn { flex: 1; padding: 9px; font-size: 12px; }
+  .timer-pill {
+    font-size: 10.5px; font-weight: 800; color: #fca5a5;
+    background: rgba(248,113,113,0.14); padding: 3px 9px; border-radius: 999px;
+  }
+
+  /* ---------------- Modal de detalhe/distribuicao de demanda ---------------- */
+  .detail-row { display: flex; justify-content: space-between; font-size: 12.5px; padding: 8px 0; border-bottom: 1px solid rgba(52,211,153,0.12); }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-label { color: rgba(209,250,229,0.55); }
+  .detail-value { color: #ffffff; font-weight: 700; text-align: right; }
+  .dist-mode-toggle { display: flex; gap: 8px; margin: 14px 0 12px; }
+  .dist-mode-btn {
+    flex: 1; padding: 10px; border-radius: 12px; text-align: center; font-size: 11.5px; font-weight: 700;
+    border: 1px solid rgba(52,211,153,0.25); background: rgba(255,255,255,0.03); color: rgba(209,250,229,0.6);
+    cursor: pointer;
+  }
+  .dist-mode-btn.active { background: rgba(16,185,129,0.16); border-color: rgba(52,211,153,0.6); color: #6ee7b7; }
+  .team-pick-row {
+    display: flex; align-items: center; gap: 10px; padding: 10px;
+    border: 1px solid rgba(52,211,153,0.18); border-radius: 14px; margin-bottom: 8px; cursor: pointer;
+  }
+  .team-pick-row.selected { border-color: #34d399; background: rgba(16,185,129,0.1); }
+  .team-pick-row .radio { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(52,211,153,0.4); flex-shrink: 0; }
+  .team-pick-row.selected .radio { border-color: #34d399; background: radial-gradient(circle, #34d399 40%, transparent 42%); }
+  .days-picker { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+  .day-chip { padding: 8px 10px; border-radius: 10px; font-size: 11px; font-weight: 700; border: 1px solid rgba(52,211,153,0.25); background: rgba(255,255,255,0.03); color: rgba(209,250,229,0.6); cursor: pointer; }
+  .day-chip.selected { background: rgba(16,185,129,0.16); border-color: #34d399; color: #6ee7b7; }
+
+  /* ---------------- Compliance ---------------- */
+  .compliance-item { display: flex; align-items: center; gap: 12px; }
+  .compliance-icon {
+    width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+  }
+  .compliance-ok { background: rgba(16,185,129,0.16); }
+  .compliance-pending { background: rgba(251,191,36,0.14); }
+
+  /* ---------------- Financeiro ---------------- */
+  .bar-row { display: flex; align-items: flex-end; gap: 6px; height: 70px; margin: 12px 0 4px; }
+  .bar { flex: 1; background: linear-gradient(180deg, #34d399, #065f46); border-radius: 5px 5px 0 0; opacity: 0.85; }
+  .bar-labels { display: flex; gap: 6px; }
+  .bar-labels span { flex: 1; text-align: center; font-size: 9px; color: rgba(209,250,229,0.5); }
+
+  /* ---------------- Navegacao inferior ---------------- */
+  .bottom-nav {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px;
+    width: 460px; max-width: calc(100% - 20px);
+    background: rgba(6,20,17,0.92);
+    border: 1px solid rgba(52,211,153,0.28);
+    border-radius: 20px;
+    display: flex; justify-content: space-around;
+    padding: 8px 4px;
+    backdrop-filter: blur(10px);
+    z-index: 20;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  }
+  .nav-item {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: none; border: none; color: rgba(209,250,229,0.45);
+    font-family: inherit; font-size: 9.5px; font-weight: 700; letter-spacing: 0.2px;
+    padding: 6px 8px; border-radius: 12px; cursor: pointer;
+  }
+  .nav-item .nav-icon { font-size: 16px; }
+  .nav-item.active { color: #6ee7b7; background: rgba(16,185,129,0.14); }
+
+  .screen { display: none; }
+  .screen.active { display: block; animation: fadeIn 0.25s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .empty-hint { font-size: 11.5px; color: rgba(209,250,229,0.45); text-align: center; padding: 18px 6px; }
+
+  /* Modal simples de convite */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 50;
+    display: none; align-items: flex-end; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-box {
+    width: 460px; max-width: 100%; background: #0a1e1a; border: 1px solid rgba(52,211,153,0.3);
+    border-radius: 22px 22px 0 0; padding: 20px 18px 26px; color: #eafff5;
+  }
+  .code-box {
+    font-size: 22px; font-weight: 800; letter-spacing: 4px; text-align: center;
+    background: rgba(16,185,129,0.12); border: 1px dashed rgba(52,211,153,0.5);
+    border-radius: 14px; padding: 16px; margin: 14px 0; color: #6ee7b7;
+  }
+</style>
+</head>
+<body>
+
+  <div class="panic-alert-banner" id="panicBanner">
+    <span>&#128680; <span id="panicBannerTexto">Alerta de pânico de um vigilante!</span></span>
+    <button onclick="fecharAlertaPanico()">Ver detalhes</button>
+  </div>
+
+  <div class="tech-bg">
+    <div class="room-blur"></div>
+    <svg class="city-map" viewBox="0 0 460 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <g class="roads">
+        <path d="M40,60 L120,220 L90,420 L180,600 L140,820" />
+        <path d="M420,40 L340,240 L380,460 L260,640 L300,860" />
+        <path d="M20,380 L440,340" />
+        <path d="M10,560 L450,600" />
+      </g>
+      <g class="roads-secondary">
+        <path d="M0,150 L460,120" />
+        <path d="M0,480 L460,500" />
+        <path d="M0,720 L460,700" />
+        <path d="M150,0 L170,900" />
+        <path d="M310,0 L290,900" />
+      </g>
+      <g>
+        <circle class="node-chip node-chip-lit" cx="120" cy="220" r="5" />
+        <circle class="node-chip" cx="340" cy="240" r="4" />
+        <circle class="node-chip node-chip-lit" cx="180" cy="600" r="5" />
+        <circle class="node-chip" cx="260" cy="640" r="4" />
+        <circle class="node-chip" cx="90" cy="420" r="4" />
+        <circle class="node-chip node-chip-lit" cx="380" cy="460" r="5" />
+      </g>
+    </svg>
+    <div class="map-dim-overlay"></div>
+    <div class="sparkle" style="top:10%; left:8%; font-size:14px;">&#10022;</div>
+    <div class="sparkle" style="top:68%; left:88%; font-size:18px; animation-delay:1s;">&#10022;</div>
+    <div class="sparkle" style="top:40%; left:50%; font-size:12px; animation-delay:1.6s;">&#10022;</div>
+  </div>
+
+  <div class="panel">
+    <div class="brand-row">
+      <div class="brand-logo">S</div>
+      <div>
+        <div class="brand-name">SHIELD <span style="font-weight:500; opacity:0.7;">Corporativo</span></div>
+        <div class="brand-sub">Painel da Empresa Parceira</div>
+      </div>
+    </div>
+
+    <!-- ============ TELA: INÍCIO ============ -->
+    <div class="screen active" id="screen-inicio">
+      <div class="company-header">
+        <div class="company-name-row">
+          <div>
+            <div class="company-name">Sentinela Segurança Ltda.</div>
+            <div class="company-sub">CNPJ 12.345.678/0001-90</div>
+          </div>
+          <div class="member-avatar" style="width:46px;height:46px;">SS</div>
+        </div>
+        <div class="verified-badge"><span class="dot"></span> Regularidade PF válida até 14/03/2027</div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value">18</div>
+          <div class="stat-label">Vigilantes ativos agora</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">7</div>
+          <div class="stat-label">Demandas hoje</div>
+        </div>
+        <div class="stat-card wide">
+          <div>
+            <div class="stat-value">R$ 24.680,00</div>
+            <div class="stat-label">Faturamento do mês</div>
+          </div>
+          <div class="btn btn-ghost" style="font-size:11px; padding:8px 12px;">Ver relatório</div>
+        </div>
+      </div>
+
+      <div class="section-title">Atividade recente</div>
+      <div class="card">
+        <div class="card-row">
+          <div>
+            <div class="member-name" style="font-size:12.5px;">Turno de Portaria — Ed. Alameda</div>
+            <div class="member-meta">Carlos M. concluiu às 22:14</div>
+          </div>
+          <span class="status-chip status-online">Concluído</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-row">
+          <div>
+            <div class="member-name" style="font-size:12.5px;">Escolta — Evento Savassi</div>
+            <div class="member-meta">Aguardando distribuição interna</div>
+          </div>
+          <span class="status-chip status-pending">Pendente</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ TELA: EQUIPE ============ -->
+    <div class="screen" id="screen-equipe">
+      <div class="card-row" style="margin-bottom:14px;">
+        <div class="section-title" style="margin:0;">Sua equipe</div>
+        <button class="btn btn-emerald" style="font-size:11.5px; padding:8px 12px;" onclick="openInvite()">+ Convidar</button>
+      </div>
+
+      <div id="aguardandoAprovacaoWrap"></div>
+
+      <div class="card member-card">
+        <div class="member-avatar">RC</div>
+        <div style="flex:1;">
+          <div class="member-name">Rodrigo Castro</div>
+          <div class="member-meta">Portaria · Apoio</div>
+        </div>
+        <span class="status-chip status-online">Online</span>
+      </div>
+      <div class="card member-card">
+        <div class="member-avatar">FL</div>
+        <div style="flex:1;">
+          <div class="member-name">Fernanda Lima</div>
+          <div class="member-meta">Elite · Escolta VIP</div>
+        </div>
+        <span class="status-chip status-online">Online</span>
+      </div>
+      <div class="card member-card">
+        <div class="member-avatar">JP</div>
+        <div style="flex:1;">
+          <div class="member-name">João Pedro</div>
+          <div class="member-meta">Eventos · Bar/Restaurante</div>
+        </div>
+        <span class="status-chip status-off">Offline</span>
+      </div>
+
+      <div class="section-title">Escala da semana</div>
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; font-size:11px; color:rgba(209,250,229,0.6); margin-bottom:8px;">
+          <span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span><span>DOM</span>
+        </div>
+        <div style="display:flex; justify-content:space-between;">
+          <span class="status-chip status-online">6</span>
+          <span class="status-chip status-online">6</span>
+          <span class="status-chip status-online">5</span>
+          <span class="status-chip status-online">6</span>
+          <span class="status-chip status-online">8</span>
+          <span class="status-chip status-pending">3</span>
+          <span class="status-chip status-off">1</span>
+        </div>
+        <div class="empty-hint" style="padding-top:12px;">Vigilantes escalados por dia — toque num dia pra montar o turno</div>
+      </div>
+    </div>
+
+    <!-- ============ TELA: DEMANDAS ============ -->
+    <div class="screen" id="screen-demandas">
+      <div class="section-title" style="margin-top:0;">Demandas recebidas</div>
+
+      <div class="card demand-card" style="border-color:rgba(248,113,113,0.4);">
+        <div class="demand-top">
+          <span class="demand-tag" style="background:rgba(248,113,113,0.16); color:#fca5a5;">ELITE · IMEDIATA</span>
+          <span class="timer-pill" id="timerElite">&#9200; 74s</span>
+        </div>
+        <div class="demand-desc">Escolta pessoal — Savassi, Belo Horizonte<br>Hoje, 20h às 23h (3h) · R$ 336,00</div>
+        <div class="demand-actions">
+          <button class="btn btn-ghost" onclick="openDemand('elite')">Ver detalhes</button>
+          <button class="btn btn-emerald" onclick="openDemand('elite')">Distribuir</button>
+        </div>
+      </div>
+
+      <div class="card demand-card">
+        <div class="demand-top">
+          <span class="demand-tag">PORTARIA · AGENDADA</span>
+          <span class="member-meta">há 22 min</span>
+        </div>
+        <div class="demand-desc">Ed. Comercial Alameda — Barro Preto<br>Amanhã, turno 06h às 18h</div>
+        <div class="demand-actions">
+          <button class="btn btn-ghost" onclick="openDemand('portaria')">Ver detalhes</button>
+          <button class="btn btn-emerald" onclick="openDemand('portaria')">Distribuir</button>
+        </div>
+      </div>
+
+      <div class="card demand-card">
+        <div class="demand-top">
+          <span class="demand-tag">FACILITY · RECORRENTE</span>
+          <span class="member-meta">há 1h</span>
+        </div>
+        <div class="demand-desc">Galpão Industrial — Contagem<br>Seg, Qua, Sex · 08h às 17h</div>
+        <div class="demand-actions">
+          <button class="btn btn-ghost" onclick="openDemand('recorrente')">Ver detalhes</button>
+          <button class="btn btn-emerald" onclick="openDemand('recorrente')">Distribuir</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-row">
+          <div>
+            <div class="member-name" style="font-size:12.5px;">Facility — Galpão Contagem</div>
+            <div class="member-meta">Distribuída para Rodrigo Castro</div>
+          </div>
+          <span class="status-chip status-online">Aceita</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ TELA: FINANCEIRO ============ -->
+    <div class="screen" id="screen-financeiro">
+      <div class="card">
+        <div class="stat-label">Saldo disponível</div>
+        <div class="stat-value" style="font-size:26px; margin-top:4px;">R$ 6.240,50</div>
+        <button class="btn btn-emerald btn-block" style="margin-top:12px;">Sacar via Pix</button>
+      </div>
+
+      <div class="section-title">Faturamento — últimos 7 dias</div>
+      <div class="card">
+        <div class="bar-row">
+          <div class="bar" style="height:40%;"></div>
+          <div class="bar" style="height:65%;"></div>
+          <div class="bar" style="height:50%;"></div>
+          <div class="bar" style="height:80%;"></div>
+          <div class="bar" style="height:60%;"></div>
+          <div class="bar" style="height:95%;"></div>
+          <div class="bar" style="height:30%;"></div>
+        </div>
+        <div class="bar-labels">
+          <span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span><span>D</span>
+        </div>
+      </div>
+
+      <div class="section-title">Antecipação de recebíveis (Lastro D+7)</div>
+      <div class="card">
+        <div class="member-meta" style="margin-bottom:10px; line-height:1.5;">
+          Serviço concluído? Anexe a Nota Fiscal e antecipe o recebimento em vez de esperar o prazo normal.
+        </div>
+        <input type="text" id="antecipacaoPaymentId" placeholder="ID da cobrança (ex: pay_000123456)"
+          style="width:100%; padding:9px 11px; border-radius:10px; background:rgba(255,255,255,0.04); border:1px solid rgba(52,211,153,0.25); color:#eafff5; font-size:12.5px; margin-bottom:8px; box-sizing:border-box;">
+        <label class="btn btn-ghost btn-block" style="display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer;">
+          &#128196; <span id="antecipacaoArquivoLabel">Anexar Nota Fiscal</span>
+          <input type="file" id="antecipacaoArquivo" accept="application/pdf,image/*" style="display:none;">
+        </label>
+        <div id="antecipacaoMsg" style="display:none; font-size:11.5px; font-weight:700; margin-top:8px;"></div>
+        <button class="btn btn-emerald btn-block" style="margin-top:10px;" id="antecipacaoBtn" onclick="solicitarAntecipacaoNF()">Solicitar antecipação</button>
+      </div>
+
+      <div class="section-title">Repasse por vigilante (mês)</div>
+      <div class="card">
+        <div class="card-row" style="margin-bottom:10px;">
+          <span class="member-name" style="font-size:12.5px;">Fernanda Lima</span>
+          <span class="member-name" style="font-size:12.5px;">R$ 4.120,00</span>
+        </div>
+        <div class="card-row" style="margin-bottom:10px;">
+          <span class="member-name" style="font-size:12.5px;">Rodrigo Castro</span>
+          <span class="member-name" style="font-size:12.5px;">R$ 3.560,00</span>
+        </div>
+        <div class="card-row">
+          <span class="member-name" style="font-size:12.5px;">João Pedro</span>
+          <span class="member-name" style="font-size:12.5px;">R$ 2.890,00</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ TELA: COMPLIANCE ============ -->
+    <div class="screen" id="screen-compliance">
+      <div class="section-title" style="margin-top:0;">Documentação regulatória</div>
+
+      <div class="card compliance-item">
+        <div class="compliance-icon compliance-ok">&#9989;</div>
+        <div style="flex:1;">
+          <div class="member-name">Autorização de Funcionamento — PF</div>
+          <div class="member-meta">Válida até 14/03/2027</div>
+        </div>
+      </div>
+      <div class="card compliance-item">
+        <div class="compliance-icon compliance-ok">&#9989;</div>
+        <div style="flex:1;">
+          <div class="member-name">CNPJ e Contrato Social</div>
+          <div class="member-meta">Verificado</div>
+        </div>
+      </div>
+      <div class="card compliance-item">
+        <div class="compliance-icon compliance-pending">&#9203;</div>
+        <div style="flex:1;">
+          <div class="member-name">Responsável Técnico</div>
+          <div class="member-meta">Documento em análise</div>
+        </div>
+      </div>
+
+      <div class="section-title">Gerenciadora de Risco (acionamento de pânico)</div>
+      <div class="card">
+        <div class="member-meta" style="margin-bottom:10px; line-height:1.5;">
+          Cadastre aqui o webhook da empresa de monitoramento responsável por acionar a polícia militar/rodoviária quando um dos seus vigilantes apertar o botão de pânico.
+        </div>
+        <input type="text" id="riscoNomeInput" placeholder="Nome da gerenciadora (ex: RiscoTotal Monitoramento)"
+          style="width:100%; padding:9px 11px; border-radius:10px; background:rgba(255,255,255,0.04); border:1px solid rgba(52,211,153,0.25); color:#eafff5; font-size:12.5px; margin-bottom:8px; box-sizing:border-box;">
+        <input type="text" id="riscoUrlInput" placeholder="URL do webhook (https://...)"
+          style="width:100%; padding:9px 11px; border-radius:10px; background:rgba(255,255,255,0.04); border:1px solid rgba(52,211,153,0.25); color:#eafff5; font-size:12.5px; margin-bottom:8px; box-sizing:border-box;">
+        <div id="riscoMsg" style="display:none; font-size:11.5px; font-weight:700; margin-bottom:8px;"></div>
+        <button class="btn btn-emerald btn-block" onclick="salvarWebhookRisco()">Salvar gerenciadora</button>
+      </div>
+      <div id="riscoListaWrap"></div>
+
+      <div class="section-title">Avaliação da equipe</div>
+      <div class="card">
+        <div class="card-row">
+          <div>
+            <div class="stat-value" style="font-size:22px;">4.8</div>
+            <div class="stat-label">Média geral (312 avaliações)</div>
+          </div>
+          <div style="font-size:20px; color:#fbbf24;">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <button class="nav-item active" data-screen="inicio" onclick="goTo('inicio')">
+      <span class="nav-icon">&#8962;</span> Início
+    </button>
+    <button class="nav-item" data-screen="equipe" onclick="goTo('equipe')">
+      <span class="nav-icon">&#128101;</span> Equipe
+    </button>
+    <button class="nav-item" data-screen="demandas" onclick="goTo('demandas')">
+      <span class="nav-icon">&#128276;</span> Demandas
+    </button>
+    <button class="nav-item" data-screen="financeiro" onclick="goTo('financeiro')">
+      <span class="nav-icon">&#128176;</span> Financeiro
+    </button>
+    <button class="nav-item" data-screen="compliance" onclick="goTo('compliance')">
+      <span class="nav-icon">&#128737;</span> Compliance
+    </button>
+  </div>
+
+  <div class="modal-overlay" id="docConfirmModal">
+    <div class="modal-box" style="max-height:88vh; overflow-y:auto;">
+      <div class="member-name" style="font-size:15px;">Aprovar vínculo — <span id="docModalNome"></span></div>
+      <div class="member-meta" style="margin-top:6px; line-height:1.5;">
+        A conferência da CNV e das reciclagens deste vigilante é de responsabilidade <b>exclusiva da sua empresa</b>.
+        A ShielD não realiza essa verificação.
+      </div>
+
+      <div class="section-title" style="margin-top:16px;">Número da CNV (opcional)</div>
+      <input type="text" id="docModalCnv" placeholder="Ex: CNV-2026-00123"
+        style="width:100%; padding:10px 12px; border-radius:10px; background:rgba(255,255,255,0.04); border:1px solid rgba(52,211,153,0.25); color:#eafff5; font-size:13px; margin-bottom:10px;">
+
+      <div class="section-title">Validade da CNV (opcional)</div>
+      <input type="date" id="docModalCnvValidade"
+        style="width:100%; padding:10px 12px; border-radius:10px; background:rgba(255,255,255,0.04); border:1px solid rgba(52,211,153,0.25); color:#eafff5; font-size:13px; margin-bottom:10px;">
+
+      <div class="section-title">Validade da reciclagem (opcional)</div>
+      <input type="date" id="docModalReciclagem"
+        style="width:100%; padding:10px 12px; border-radius:10px; background:rgba(255,255,255,0.04); border:1px solid rgba(52,211,153,0.25); color:#eafff5; font-size:13px; margin-bottom:12px;">
+
+      <label style="display:flex; align-items:flex-start; gap:8px; font-size:12px; color:#eafff5; line-height:1.5; cursor:pointer;">
+        <input type="checkbox" id="docModalConfirma" onchange="toggleDocModalBtn()" style="margin-top:2px;">
+        Confirmo que verifiquei a CNV e as reciclagens deste vigilante, e assumo total responsabilidade pela validade dessa documentação.
+      </label>
+      <div id="docModalErro" style="display:none; color:#fca5a5; font-size:12px; font-weight:700; margin-top:8px;"></div>
+
+      <button class="btn btn-emerald btn-block" style="margin-top:16px;" id="docModalBtnConfirmar" disabled onclick="confirmarAprovacaoDocumental()">Confirmar aprovação</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="fecharConfirmacaoDocumental()">Cancelar</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="inviteModal">
+    <div class="modal-box">
+      <div class="member-name" style="font-size:15px;">Convidar vigilante</div>
+      <div class="member-meta" style="margin-top:4px;">Compartilhe este código — ele expira em 48h e só pode ser usado uma vez</div>
+      <div class="code-box" id="inviteCodeBox">Gerando...</div>
+      <div class="empty-hint" id="inviteErrorHint" style="display:none; color:#fca5a5;"></div>
+      <button class="btn btn-emerald btn-block" onclick="copiarCodigoConvite()">Copiar código</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="closeInvite()">Fechar</button>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: DETALHE + DISTRIBUIÇÃO DA DEMANDA ============ -->
+  <div class="modal-overlay" id="demandModal">
+    <div class="modal-box" style="max-height:88vh; overflow-y:auto;">
+      <div class="card-row" style="margin-bottom:6px;">
+        <div class="member-name" style="font-size:15px;" id="demandModalTitle">Detalhe da demanda</div>
+        <span class="demand-tag" id="demandModalTag">ELITE · IMEDIATA</span>
+      </div>
+
+      <div class="card" style="margin-top:10px;">
+        <div class="detail-row"><span class="detail-label">Endereço</span><span class="detail-value" id="demandAddr">Savassi, Belo Horizonte</span></div>
+        <div class="detail-row"><span class="detail-label">Horário</span><span class="detail-value" id="demandTime">Hoje, 20h às 23h (3h)</span></div>
+        <div class="detail-row"><span class="detail-label">Cliente</span><span class="detail-value" id="demandClient">Império das Relíquias</span></div>
+        <div class="detail-row"><span class="detail-label">Valor da equipe</span><span class="detail-value" id="demandValue">R$ 336,00</span></div>
+      </div>
+
+      <!-- Bloco Imediata/Agendada: escolher modo de distribuicao -->
+      <div id="blockDistribuicao">
+        <div class="section-title" style="margin-top:16px;">Como distribuir?</div>
+        <div class="dist-mode-toggle">
+          <div class="dist-mode-btn active" id="modeManualBtn" onclick="setDistMode('manual')">Escolher vigilante</div>
+          <div class="dist-mode-btn" id="modeBroadcastBtn" onclick="setDistMode('broadcast')">Notificar toda equipe</div>
+        </div>
+
+        <div id="manualPickList">
+          <div class="team-pick-row selected" onclick="pickMember(this)">
+            <div class="radio"></div>
+            <div class="member-avatar" style="width:32px;height:32px;font-size:11px;">FL</div>
+            <div style="flex:1;">
+              <div class="member-name" style="font-size:12.5px;">Fernanda Lima</div>
+              <div class="member-meta">Elite · Escolta VIP · online</div>
+            </div>
+          </div>
+          <div class="team-pick-row" onclick="pickMember(this)">
+            <div class="radio"></div>
+            <div class="member-avatar" style="width:32px;height:32px;font-size:11px;">RC</div>
+            <div style="flex:1;">
+              <div class="member-name" style="font-size:12.5px;">Rodrigo Castro</div>
+              <div class="member-meta">Portaria · Apoio · online</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="broadcastHint" style="display:none;" class="empty-hint">
+          Todos os vigilantes online habilitados nessa categoria recebem ao mesmo tempo — quem aceitar primeiro, pega.
+        </div>
+      </div>
+
+      <!-- Bloco Recorrente: escolher dias + vigilante por dia -->
+      <div id="blockRecorrente" style="display:none;">
+        <div class="section-title" style="margin-top:16px;">Dias da semana</div>
+        <div class="days-picker">
+          <div class="day-chip selected">SEG</div>
+          <div class="day-chip">TER</div>
+          <div class="day-chip selected">QUA</div>
+          <div class="day-chip">QUI</div>
+          <div class="day-chip selected">SEX</div>
+          <div class="day-chip">SÁB</div>
+          <div class="day-chip">DOM</div>
+        </div>
+        <div class="section-title">Vigilante responsável</div>
+        <div class="team-pick-row selected" onclick="pickMember(this)">
+          <div class="radio"></div>
+          <div class="member-avatar" style="width:32px;height:32px;font-size:11px;">RC</div>
+          <div style="flex:1;">
+            <div class="member-name" style="font-size:12.5px;">Rodrigo Castro</div>
+            <div class="member-meta">Facility · disponível nos dias marcados</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-emerald btn-block" style="margin-top:16px;" onclick="closeDemand()">Confirmar distribuição</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="closeDemand()">Fechar</button>
+    </div>
+  </div>
+
+  <script>
+    function goTo(name) {
+      document.querySelectorAll('.screen').forEach(function (el) { el.classList.remove('active'); });
+      document.getElementById('screen-' + name).classList.add('active');
+      document.querySelectorAll('.nav-item').forEach(function (el) {
+        el.classList.toggle('active', el.dataset.screen === name);
+      });
+      if (name === 'equipe') carregarAguardandoAprovacao();
+    }
+
+    async function carregarAguardandoAprovacao() {
+      const wrap = document.getElementById('aguardandoAprovacaoWrap');
+      if (!wrap) return;
+
+      if (!window.sb || !window.CURRENT_COMPANY_ID) {
+        wrap.innerHTML = '';
+        return;
+      }
+
+      try {
+        const { data, error } = await window.sb
+          .from('usuarios_prestadores')
+          .select('id, profiles(full_name)')
+          .eq('company_id', window.CURRENT_COMPANY_ID)
+          .eq('status_aprovacao', 'pendente');
+
+        if (error) throw error;
+
+        if (!data || !data.length) {
+          wrap.innerHTML = '';
+          return;
+        }
+
+        wrap.innerHTML = '<div class="section-title" style="margin-top:0;">Aguardando aprovação</div>' +
+          data.map(function (p) {
+            const nome = (p.profiles && p.profiles.full_name) || 'Vigilante';
+            const iniciais = nome.split(' ').map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase();
+            const nomeEscapado = nome.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            return '<div class="card member-card aprovacao-card" data-provider-id="' + p.id + '">' +
+              '<div class="member-avatar">' + iniciais + '</div>' +
+              '<div style="flex:1;">' +
+                '<div class="member-name">' + nome + '</div>' +
+                '<div class="member-meta">Aguardando sua aprovação</div>' +
+              '</div>' +
+              '<div class="aprovacao-actions">' +
+                '<button class="btn-recusar" data-action="recusar" data-provider-id="' + p.id + '">Recusar</button>' +
+                '<button class="btn-aprovar" data-action="aprovar" data-provider-id="' + p.id + '" data-nome="' + nomeEscapado + '">Aprovar</button>' +
+              '</div>' +
+            '</div>';
+          }).join('');
+
+        wrap.querySelectorAll('[data-action="aprovar"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            abrirConfirmacaoDocumental(btn.dataset.providerId, btn.dataset.nome);
+          });
+        });
+        wrap.querySelectorAll('[data-action="recusar"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            recusarPrestador(btn.dataset.providerId);
+          });
+        });
+      } catch (e) {
+        wrap.innerHTML = '<div class="empty-hint">Não foi possível carregar a lista de aprovação: ' + e.message + '</div>';
+      }
+    }
+
+    let __providerIdEmAprovacao = null;
+
+    function abrirConfirmacaoDocumental(providerId, nome) {
+      __providerIdEmAprovacao = providerId;
+      document.getElementById('docModalNome').textContent = nome;
+      document.getElementById('docModalCnv').value = '';
+      document.getElementById('docModalCnvValidade').value = '';
+      document.getElementById('docModalReciclagem').value = '';
+      document.getElementById('docModalConfirma').checked = false;
+      document.getElementById('docModalBtnConfirmar').disabled = true;
+      document.getElementById('docModalErro').style.display = 'none';
+      document.getElementById('docConfirmModal').classList.add('open');
+    }
+    function fecharConfirmacaoDocumental() {
+      document.getElementById('docConfirmModal').classList.remove('open');
+      __providerIdEmAprovacao = null;
+    }
+    function toggleDocModalBtn() {
+      document.getElementById('docModalBtnConfirmar').disabled = !document.getElementById('docModalConfirma').checked;
+    }
+
+    async function confirmarAprovacaoDocumental() {
+      const erro = document.getElementById('docModalErro');
+      erro.style.display = 'none';
+      if (!document.getElementById('docModalConfirma').checked) return;
+
+      try {
+        const { data, error } = await window.sb.rpc('aprovar_vinculo_prestador', {
+          p_provider_id: __providerIdEmAprovacao,
+          p_company_id: window.CURRENT_COMPANY_ID,
+          p_confirma_documentacao: true,
+          p_numero_cnv: document.getElementById('docModalCnv').value || null,
+          p_cnv_validade: document.getElementById('docModalCnvValidade').value || null,
+          p_reciclagem_validade: document.getElementById('docModalReciclagem').value || null,
+        });
+        if (error) throw error;
+        if (!data || !data.success) {
+          erro.textContent = data && data.reason === 'confirmacao_documentacao_obrigatoria'
+            ? 'É necessário confirmar a conferência da documentação.'
+            : 'Não foi possível aprovar este vínculo.';
+          erro.style.display = 'block';
+          return;
+        }
+        fecharConfirmacaoDocumental();
+        carregarAguardandoAprovacao();
+      } catch (e) {
+        erro.textContent = 'Erro: ' + e.message;
+        erro.style.display = 'block';
+      }
+    }
+
+    async function recusarPrestador(providerId) {
+      try {
+        const { error } = await window.sb.rpc('recusar_vinculo_prestador', {
+          p_provider_id: providerId,
+          p_company_id: window.CURRENT_COMPANY_ID,
+        });
+        if (error) throw error;
+        carregarAguardandoAprovacao();
+      } catch (e) {
+        alert('Erro ao recusar: ' + e.message);
+      }
+    }
+    async function openInvite() {
+      document.getElementById('inviteModal').classList.add('open');
+      const codeBox = document.getElementById('inviteCodeBox');
+      const errorHint = document.getElementById('inviteErrorHint');
+      errorHint.style.display = 'none';
+      codeBox.textContent = 'Gerando...';
+
+      try {
+        if (!window.sb || !window.CURRENT_COMPANY_ID) {
+          throw new Error('Sessão da empresa não encontrada. Feche e abra o painel de novo.');
+        }
+        const { data, error } = await window.sb.rpc('gerar_token_convite_empresa', {
+          p_company_id: window.CURRENT_COMPANY_ID,
+        });
+        if (error) throw error;
+        codeBox.textContent = data;
+      } catch (e) {
+        codeBox.textContent = '—';
+        errorHint.textContent = 'Não foi possível gerar o código: ' + e.message;
+        errorHint.style.display = 'block';
+      }
+    }
+
+    function closeInvite() { document.getElementById('inviteModal').classList.remove('open'); }
+
+    function copiarCodigoConvite() {
+      const texto = document.getElementById('inviteCodeBox').textContent;
+      if (texto && texto !== '—' && texto !== 'Gerando...' && navigator.clipboard) {
+        navigator.clipboard.writeText(texto).catch(() => {});
+      }
+    }
+
+    const demandData = {
+      elite: {
+        title: 'Escolta pessoal', tag: 'ELITE · IMEDIATA',
+        addr: 'Savassi, Belo Horizonte', time: 'Hoje, 20h às 23h (3h)',
+        client: 'Império das Relíquias', value: 'R$ 336,00',
+        mode: 'distribuicao',
+      },
+      portaria: {
+        title: 'Portaria — Ed. Comercial', tag: 'PORTARIA · AGENDADA',
+        addr: 'Barro Preto, Belo Horizonte', time: 'Amanhã, 06h às 18h',
+        client: 'Condomínio Alameda', value: 'R$ 156,00',
+        mode: 'distribuicao',
+      },
+      recorrente: {
+        title: 'Facility — Galpão Industrial', tag: 'FACILITY · RECORRENTE',
+        addr: 'Contagem, MG', time: 'Seg / Qua / Sex · 08h às 17h',
+        client: 'LogPar Armazéns', value: 'R$ 117,00 /dia',
+        mode: 'recorrente',
+      },
+    };
+
+    function openDemand(key) {
+      const d = demandData[key];
+      document.getElementById('demandModalTitle').textContent = d.title;
+      document.getElementById('demandModalTag').textContent = d.tag;
+      document.getElementById('demandAddr').textContent = d.addr;
+      document.getElementById('demandTime').textContent = d.time;
+      document.getElementById('demandClient').textContent = d.client;
+      document.getElementById('demandValue').textContent = d.value;
+      document.getElementById('blockDistribuicao').style.display = d.mode === 'distribuicao' ? 'block' : 'none';
+      document.getElementById('blockRecorrente').style.display = d.mode === 'recorrente' ? 'block' : 'none';
+      document.getElementById('demandModal').classList.add('open');
+    }
+    function closeDemand() { document.getElementById('demandModal').classList.remove('open'); }
+
+    function setDistMode(mode) {
+      document.getElementById('modeManualBtn').classList.toggle('active', mode === 'manual');
+      document.getElementById('modeBroadcastBtn').classList.toggle('active', mode === 'broadcast');
+      document.getElementById('manualPickList').style.display = mode === 'manual' ? 'block' : 'none';
+      document.getElementById('broadcastHint').style.display = mode === 'broadcast' ? 'block' : 'none';
+    }
+    function pickMember(el) {
+      el.parentElement.querySelectorAll('.team-pick-row').forEach(function (r) { r.classList.remove('selected'); });
+      el.classList.add('selected');
+    }
+    document.querySelectorAll('.day-chip').forEach(function (chip) {
+      chip.addEventListener('click', function () { chip.classList.toggle('selected'); });
+    });
+
+    // Timer regressivo simples pra demanda Imediata (visual)
+    let eliteSeconds = 74;
+    setInterval(function () {
+      eliteSeconds = eliteSeconds > 0 ? eliteSeconds - 1 : 74;
+      const el = document.getElementById('timerElite');
+      if (el) el.innerHTML = '&#9200; ' + eliteSeconds + 's';
+    }, 1000);
+    // ------------------------------------------------------------
+    // Antecipação de recebíveis (Lastro D+7) - anexa NF e chama a
+    // função serverless /api/solicitar-antecipacao
+    // ------------------------------------------------------------
+    document.getElementById('antecipacaoArquivo').addEventListener('change', function () {
+      const f = this.files[0];
+      document.getElementById('antecipacaoArquivoLabel').textContent = f ? f.name : 'Anexar Nota Fiscal';
+    });
+
+    async function solicitarAntecipacaoNF() {
+      const paymentId = document.getElementById('antecipacaoPaymentId').value.trim();
+      const arquivo = document.getElementById('antecipacaoArquivo').files[0];
+      const msg = document.getElementById('antecipacaoMsg');
+      const btn = document.getElementById('antecipacaoBtn');
+      msg.style.display = 'none';
+
+      if (!paymentId) {
+        msg.textContent = 'Informe o ID da cobrança.';
+        msg.style.color = '#fca5a5'; msg.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+      try {
+        const form = new FormData();
+        form.append('paymentId', paymentId);
+        if (arquivo) form.append('notaFiscal', arquivo);
+
+        const resp = await fetch('/api/solicitar-antecipacao', { method: 'POST', body: form });
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          msg.textContent = data.error || 'Não foi possível solicitar a antecipação.';
+          msg.style.color = '#fca5a5';
+        } else {
+          msg.textContent = 'Antecipação solicitada com sucesso! Acompanhe o status no extrato.';
+          msg.style.color = '#6ee7b7';
+          document.getElementById('antecipacaoPaymentId').value = '';
+          document.getElementById('antecipacaoArquivo').value = '';
+          document.getElementById('antecipacaoArquivoLabel').textContent = 'Anexar Nota Fiscal';
+        }
+        msg.style.display = 'block';
+      } catch (e) {
+        msg.textContent = 'Erro: ' + e.message;
+        msg.style.color = '#fca5a5';
+        msg.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Solicitar antecipação';
+      }
+    }
+
+    // ------------------------------------------------------------
+    // Gerenciadora de risco (webhook do acionamento de pânico)
+    // ------------------------------------------------------------
+    async function salvarWebhookRisco() {
+      const nome = document.getElementById('riscoNomeInput').value.trim();
+      const url = document.getElementById('riscoUrlInput').value.trim();
+      const msg = document.getElementById('riscoMsg');
+      msg.style.display = 'none';
+
+      if (!nome || !url) {
+        msg.textContent = 'Preencha o nome e a URL do webhook.';
+        msg.style.color = '#fca5a5'; msg.style.display = 'block';
+        return;
+      }
+      if (!window.sb || !window.CURRENT_COMPANY_ID) {
+        msg.textContent = 'Sessão da empresa não encontrada.';
+        msg.style.color = '#fca5a5'; msg.style.display = 'block';
+        return;
+      }
+
+      try {
+        const { error } = await window.sb.from('webhooks_gerenciadoras_risco').insert({
+          company_id: window.CURRENT_COMPANY_ID, nome_gerenciadora: nome, url_webhook: url,
+        });
+        if (error) throw error;
+        msg.textContent = 'Gerenciadora salva com sucesso.';
+        msg.style.color = '#6ee7b7';
+        document.getElementById('riscoNomeInput').value = '';
+        document.getElementById('riscoUrlInput').value = '';
+        carregarGerenciadorasRisco();
+      } catch (e) {
+        msg.textContent = 'Erro: ' + e.message;
+        msg.style.color = '#fca5a5';
+      }
+      msg.style.display = 'block';
+    }
+
+    async function carregarGerenciadorasRisco() {
+      const wrap = document.getElementById('riscoListaWrap');
+      if (!window.sb || !window.CURRENT_COMPANY_ID) return;
+      try {
+        const { data, error } = await window.sb
+          .from('webhooks_gerenciadoras_risco')
+          .select('nome_gerenciadora, url_webhook, ativo')
+          .eq('company_id', window.CURRENT_COMPANY_ID);
+        if (error) throw error;
+        wrap.innerHTML = (data || []).map(function (w) {
+          return '<div class="card compliance-item">' +
+            '<div class="compliance-icon ' + (w.ativo ? 'compliance-ok' : 'compliance-pending') + '">&#128225;</div>' +
+            '<div style="flex:1;"><div class="member-name">' + w.nome_gerenciadora + '</div>' +
+            '<div class="member-meta">' + w.url_webhook + '</div></div></div>';
+        }).join('');
+      } catch (e) {
+        wrap.innerHTML = '';
+      }
+    }
+
+    // ------------------------------------------------------------
+    // Escuta em tempo real dos acionamentos de pânico dos vigilantes
+    // desta empresa (Supabase Realtime / WebSocket)
+    // ------------------------------------------------------------
+    function fecharAlertaPanico() {
+      document.getElementById('panicBanner').classList.remove('show');
+    }
+
+    function iniciarEscutaPanico() {
+      if (!window.sb || !window.CURRENT_COMPANY_ID) return;
+      window.sb
+        .channel('panico-empresa-' + window.CURRENT_COMPANY_ID)
+        .on('postgres_changes', {
+          event: 'INSERT', schema: 'public', table: 'panic_alerts',
+          filter: 'company_id=eq.' + window.CURRENT_COMPANY_ID,
+        }, function (payload) {
+          const banner = document.getElementById('panicBanner');
+          document.getElementById('panicBannerTexto').textContent =
+            'Alerta de pânico! Vigilante em (' + payload.new.latitude + ', ' + payload.new.longitude + ')';
+          banner.classList.add('show');
+        })
+        .subscribe();
+    }
+
+    window.addEventListener('load', function () {
+      carregarGerenciadorasRisco();
+      iniciarEscutaPanico();
+    });
+  </script>
+</body>
+</html>

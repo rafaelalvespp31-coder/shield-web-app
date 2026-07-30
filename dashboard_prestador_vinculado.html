@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Painel do Vigilante Vinculado - ShielD</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overscroll-behavior: none; }
+  body {
+    margin: 0;
+    font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+    background: #060f0d;
+    min-height: 100vh;
+    display: flex; align-items: flex-start; justify-content: center;
+    position: relative; overflow-x: hidden; overflow-y: auto;
+  }
+
+  /* ---------------- Fundo animado (paleta esmeralda + dourado, igual à Empresa Parceira) ---------------- */
+  .tech-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .room-blur {
+    position: absolute; inset: -40px;
+    background:
+      radial-gradient(ellipse 520px 440px at 10% 20%, rgba(16,185,129,0.16), transparent 60%),
+      radial-gradient(ellipse 460px 520px at 4% 72%, rgba(6,25,22,0.8), transparent 65%),
+      radial-gradient(ellipse 500px 440px at 94% 28%, rgba(52,211,153,0.14), transparent 60%),
+      radial-gradient(ellipse 480px 520px at 96% 82%, rgba(5,18,16,0.8), transparent 65%),
+      linear-gradient(160deg, #0a1e1a 0%, #081712 35%, #061210 60%, #081814 100%);
+    filter: blur(16px);
+  }
+  .city-map { position: absolute; inset: 0; width: 100%; height: 100%; filter: blur(5px); opacity: 0.6; }
+  .map-dim-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.74); pointer-events: none; }
+  .roads path { fill: none; stroke: #10b981; stroke-width: 2; stroke-linecap: round; opacity: 0.85; stroke-dasharray: 1 7; }
+  .roads-secondary path { fill: none; stroke: #10b981; stroke-width: 1; stroke-linecap: round; opacity: 0.42; stroke-dasharray: 1 5; }
+  .sparkle { position: absolute; color: rgba(251,191,36,0.85); filter: drop-shadow(0 0 6px rgba(255,255,255,0.5)); animation: twinkle 2.6s ease-in-out infinite; }
+  @keyframes twinkle { 0%,100%{ opacity:0.25; transform:scale(0.8);} 50%{ opacity:1; transform:scale(1.1);} }
+
+  /* ---------------- Painel principal (glass, esmeralda) ---------------- */
+  .panel {
+    width: 460px; max-width: 100%; min-height: 100vh;
+    padding: 22px 18px 100px; position: relative;
+    background: linear-gradient(180deg, rgba(12,36,30,0.6) 0%, rgba(8,26,22,0.65) 30%, rgba(6,20,17,0.75) 100%);
+    backdrop-filter: blur(2px) saturate(140%); -webkit-backdrop-filter: blur(2px) saturate(140%);
+    color: #eafff5;
+  }
+
+  .brand-row { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .brand-logo {
+    width: 40px; height: 40px; border-radius: 12px;
+    background: radial-gradient(circle at 30% 30%, #34d399, #065f46 75%);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 1px rgba(52,211,153,0.4), 0 4px 14px rgba(0,0,0,0.5);
+    font-weight: 800; color: #04120d; font-size: 15px;
+  }
+  .brand-name { font-size: 15px; font-weight: 800; letter-spacing: 0.4px; color: #f0fff9; }
+  .brand-sub { font-size: 10.5px; color: rgba(209,250,229,0.6); letter-spacing: 0.6px; text-transform: uppercase; }
+
+  .empresa-header {
+    background: rgba(16,185,129,0.08);
+    border: 1px solid rgba(52,211,153,0.35);
+    border-radius: 20px; padding: 16px; margin-bottom: 14px;
+  }
+  .empresa-name-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .empresa-name { font-size: 16px; font-weight: 800; color: #ffffff; }
+  .empresa-sub { font-size: 11.5px; color: rgba(209,250,229,0.7); margin-top: 2px; }
+  .vinculado-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(16,185,129,0.18); border: 1px solid rgba(52,211,153,0.5);
+    color: #6ee7b7; font-size: 10.5px; font-weight: 700;
+    padding: 4px 10px; border-radius: 999px; margin-top: 10px; letter-spacing: 0.3px;
+  }
+  .vinculado-badge.pendente { background: rgba(251,191,36,0.16); border-color: rgba(251,191,36,0.5); color: #fcd34d; }
+  .vinculado-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: #34d399; box-shadow: 0 0 6px #34d399; }
+  .vinculado-badge.pendente .dot { background: #fbbf24; box-shadow: 0 0 6px #fbbf24; }
+
+  .pending-banner {
+    background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.4);
+    border-radius: 16px; padding: 14px; margin-bottom: 14px; font-size: 12.5px; color: #fde68a; line-height: 1.5;
+  }
+
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .stat-card { background: rgba(255,255,255,0.045); border: 1px solid rgba(52,211,153,0.2); border-radius: 16px; padding: 14px; }
+  .stat-value { font-size: 20px; font-weight: 800; color: #ffffff; }
+  .stat-label { font-size: 10.5px; color: rgba(209,250,229,0.55); margin-top: 3px; letter-spacing: 0.3px; }
+
+  .status-toggle { display: flex; background: rgba(255,255,255,0.05); border: 1px solid rgba(52,211,153,0.25); border-radius: 14px; padding: 4px; margin-bottom: 14px; }
+  .status-toggle button {
+    flex: 1; border: none; background: none; padding: 10px; border-radius: 10px;
+    font-size: 12.5px; font-weight: 800; color: rgba(209,250,229,0.5); font-family: inherit; cursor: pointer;
+  }
+  .status-toggle button.active.online { background: linear-gradient(135deg,#fde68a,#d4af37); color: #241f14; }
+  .status-toggle button.active.offline { background: rgba(255,255,255,0.08); color: #eafff5; }
+
+  .section-title { font-size: 12px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase; color: rgba(209,250,229,0.5); margin: 20px 2px 10px; }
+  .card { background: rgba(255,255,255,0.045); border: 1px solid rgba(52,211,153,0.2); border-radius: 16px; padding: 14px; margin-bottom: 10px; }
+  .card-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .turno-tag { font-size: 10px; font-weight: 800; color: #241f14; background: linear-gradient(135deg,#fde68a,#d4af37); padding: 3px 9px; border-radius: 8px; }
+  .status-chip { font-size: 9.5px; font-weight: 800; padding: 3px 8px; border-radius: 999px; letter-spacing: 0.3px; text-transform: uppercase; }
+  .status-agendado { background: rgba(56,189,248,0.16); color: #7dd3fc; }
+  .status-concluido { background: rgba(52,211,153,0.16); color: #6ee7b7; }
+  .empty-hint { font-size: 11.5px; color: rgba(209,250,229,0.4); text-align: center; padding: 18px 6px; }
+
+  .bottom-nav {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px;
+    width: 460px; max-width: calc(100% - 20px);
+    background: rgba(6,20,17,0.94); border: 1px solid rgba(52,211,153,0.3);
+    border-radius: 20px; display: flex; justify-content: space-around; padding: 8px 4px;
+    backdrop-filter: blur(10px); z-index: 20; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  }
+  .nav-item {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: none; border: none; color: rgba(209,250,229,0.45);
+    font-family: inherit; font-size: 9.5px; font-weight: 700; padding: 6px 8px; border-radius: 12px; cursor: pointer;
+  }
+  .nav-item .nav-icon { font-size: 16px; }
+  .nav-item.active { color: #6ee7b7; background: rgba(16,185,129,0.14); }
+
+  .screen { display: none; }
+  .screen.active { display: block; animation: fadeIn 0.25s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .exit-btn {
+    position: fixed; top: 14px; left: 14px; z-index: 30;
+    background: rgba(6,20,17,0.85); border: 1px solid rgba(52,211,153,0.35); color: #eafff5;
+    font-size: 11px; font-weight: 700; padding: 8px 14px; border-radius: 999px; cursor: pointer;
+  }
+
+  /* ---------------- Botão de pânico (segurar 3s) ---------------- */
+  .panic-wrap { display: flex; flex-direction: column; align-items: center; margin: 6px 0 18px; }
+  .panic-btn {
+    width: 92px; height: 92px; border-radius: 50%; position: relative;
+    background: radial-gradient(circle at 35% 30%, #ef4444, #7f1d1d 80%);
+    border: 3px solid rgba(248,113,113,0.5);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 800; font-size: 12px; letter-spacing: 0.5px;
+    cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none;
+    box-shadow: 0 0 0 rgba(239,68,68,0.5);
+    transition: transform 0.15s ease;
+  }
+  .panic-btn:active { transform: scale(0.96); }
+  .panic-btn svg { position: absolute; inset: -3px; transform: rotate(-90deg); pointer-events: none; }
+  .panic-btn circle.progress {
+    fill: none; stroke: #fecaca; stroke-width: 4; stroke-linecap: round;
+    stroke-dasharray: 289; stroke-dashoffset: 289; transition: stroke-dashoffset 0.05s linear;
+  }
+  .panic-hint { font-size: 10.5px; color: rgba(209,250,229,0.5); margin-top: 8px; text-align: center; }
+  .panic-status { font-size: 11px; font-weight: 700; margin-top: 6px; text-align: center; min-height: 14px; }
+</style>
+</head>
+<body>
+
+  <button class="exit-btn" onclick="parent && parent.postMessage ? null : null" id="exitBtn">&#8592; Sair</button>
+
+  <div class="tech-bg">
+    <div class="room-blur"></div>
+    <svg class="city-map" viewBox="0 0 460 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <g class="roads">
+        <path d="M40,60 L120,220 L90,420 L180,600 L140,820" />
+        <path d="M420,40 L340,240 L380,460 L260,640 L300,860" />
+        <path d="M20,380 L440,340" />
+      </g>
+      <g class="roads-secondary">
+        <path d="M0,150 L460,120" />
+        <path d="M0,480 L460,500" />
+        <path d="M150,0 L170,900" />
+      </g>
+    </svg>
+    <div class="map-dim-overlay"></div>
+    <div class="sparkle" style="top:12%; left:10%; font-size:14px;">&#10022;</div>
+    <div class="sparkle" style="top:65%; left:85%; font-size:18px; animation-delay:1s;">&#10022;</div>
+  </div>
+
+  <div class="panel">
+    <div class="brand-row">
+      <div class="brand-logo">S</div>
+      <div>
+        <div class="brand-name">SHIELD</div>
+        <div class="brand-sub">Vigilante Vinculado</div>
+      </div>
+    </div>
+
+    <!-- ============ TELA: INÍCIO ============ -->
+    <div class="screen active" id="screen-inicio">
+      <div class="empresa-header">
+        <div class="empresa-name-row">
+          <div>
+            <div class="empresa-name" id="empresaNome">Sentinela Segurança Ltda.</div>
+            <div class="empresa-sub">Você atende exclusivamente por esta empresa</div>
+          </div>
+        </div>
+        <div class="vinculado-badge" id="vinculoBadge"><span class="dot"></span> Vínculo ativo</div>
+      </div>
+
+      <div class="pending-banner" id="pendingBanner" style="display:none;">
+        &#9203; Seu vínculo ainda está <b>pendente de aprovação</b> da empresa. Assim que for aprovado, você começa a receber turnos por aqui. Enquanto isso, seus dados e documentos já estão em análise.
+      </div>
+
+      <div class="status-toggle" id="statusToggle">
+        <button class="active online" onclick="setStatus('online')" id="btnOnline">DISPONÍVEL</button>
+        <button onclick="setStatus('offline')" id="btnOffline">INDISPONÍVEL</button>
+      </div>
+
+      <div class="panic-wrap">
+        <div class="panic-btn" id="botaoPanico">
+          <svg width="98" height="98" viewBox="0 0 98 98">
+            <circle class="progress" cx="49" cy="49" r="46" id="panicProgressCircle"></circle>
+          </svg>
+          <span>PÂNICO</span>
+        </div>
+        <div class="panic-status" id="panicStatus"></div>
+        <div class="panic-hint">Segure por 3 segundos para acionar</div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value">2</div>
+          <div class="stat-label">Turnos esta semana</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">R$ 1.240,00</div>
+          <div class="stat-label">A receber (mês)</div>
+        </div>
+      </div>
+
+      <div class="section-title">Próximo turno</div>
+      <div class="card">
+        <div class="card-row">
+          <div>
+            <div class="empresa-name" style="font-size:13px;">Portaria — Ed. Comercial Alameda</div>
+            <div class="empresa-sub">Amanhã, 06h às 18h</div>
+          </div>
+          <span class="status-chip status-agendado">Agendado</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ TELA: MEUS TURNOS ============ -->
+    <div class="screen" id="screen-turnos">
+      <div class="section-title" style="margin-top:0;">Meus turnos</div>
+
+      <div class="card">
+        <div class="card-row" style="margin-bottom:4px;">
+          <span class="turno-tag">PORTARIA</span>
+          <span class="status-chip status-agendado">Agendado</span>
+        </div>
+        <div class="empresa-name" style="font-size:13px; margin-top:6px;">Ed. Comercial Alameda — Barro Preto</div>
+        <div class="empresa-sub">Amanhã, 06h às 18h</div>
+      </div>
+
+      <div class="card">
+        <div class="card-row" style="margin-bottom:4px;">
+          <span class="turno-tag">EVENTOS</span>
+          <span class="status-chip status-agendado">Agendado</span>
+        </div>
+        <div class="empresa-name" style="font-size:13px; margin-top:6px;">Casamento — Buffet Savassi</div>
+        <div class="empresa-sub">Sábado, 18h às 23h</div>
+      </div>
+
+      <div class="section-title">Concluídos recentemente</div>
+      <div class="card">
+        <div class="card-row">
+          <div>
+            <div class="empresa-name" style="font-size:13px;">Portaria — Galpão Contagem</div>
+            <div class="empresa-sub">10/07, 08h às 17h</div>
+          </div>
+          <span class="status-chip status-concluido">Concluído</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ TELA: CARTEIRA ============ -->
+    <div class="screen" id="screen-carteira">
+      <div class="card">
+        <div class="stat-label">Saldo disponível</div>
+        <div class="stat-value" style="font-size:26px; margin-top:4px;">R$ 620,00</div>
+        <button class="btn" style="margin-top:12px; width:100%; padding:11px; border-radius:12px; border:none; font-weight:800; background:linear-gradient(135deg,#fde68a,#d4af37); color:#241f14; font-size:13px; cursor:pointer;" onclick="showToast('Saque solicitado via Pix.')">Sacar via Pix</button>
+      </div>
+      <div class="section-title">Repasses recentes</div>
+      <div class="card">
+        <div class="card-row" style="margin-bottom:10px;">
+          <span class="empresa-sub" style="font-size:12.5px;">Portaria — Galpão Contagem</span>
+          <span class="empresa-name" style="font-size:12.5px;">R$ 340,00</span>
+        </div>
+        <div class="card-row">
+          <span class="empresa-sub" style="font-size:12.5px;">Evento — Buffet Savassi</span>
+          <span class="empresa-name" style="font-size:12.5px;">R$ 280,00</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ TELA: PERFIL ============ -->
+    <div class="screen" id="screen-perfil">
+      <div class="card">
+        <div class="empresa-name" style="font-size:14px;">Rodrigo Castro</div>
+        <div class="empresa-sub">Vigilante vinculado · Portaria, Apoio</div>
+      </div>
+      <div class="section-title" style="margin-top:0;">Conta</div>
+      <button class="card" style="width:100%; text-align:left; border:none; cursor:pointer; color:#eafff5; font-size:13px; font-weight:700;" onclick="showToast('Abrindo Meus Dados...')">&#128100; Meus Dados</button>
+      <button class="card" style="width:100%; text-align:left; border:none; cursor:pointer; color:#eafff5; font-size:13px; font-weight:700;" onclick="showToast('Abrindo Central de Suporte...')">&#128737; Central de Suporte</button>
+      <button class="card" style="width:100%; text-align:left; border:none; cursor:pointer; color:#fca5a5; font-size:13px; font-weight:700;" onclick="sairDoApp()">&#10143; Sair</button>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <button class="nav-item active" data-screen="inicio" onclick="goTo('inicio')"><span class="nav-icon">&#8962;</span> Início</button>
+    <button class="nav-item" data-screen="turnos" onclick="goTo('turnos')"><span class="nav-icon">&#128197;</span> Turnos</button>
+    <button class="nav-item" data-screen="carteira" onclick="goTo('carteira')"><span class="nav-icon">&#128176;</span> Carteira</button>
+    <button class="nav-item" data-screen="perfil" onclick="goTo('perfil')"><span class="nav-icon">&#128100;</span> Perfil</button>
+  </div>
+
+  <script>
+    function goTo(name) {
+      document.querySelectorAll('.screen').forEach((el) => el.classList.remove('active'));
+      document.getElementById('screen-' + name).classList.add('active');
+      document.querySelectorAll('.nav-item').forEach((el) => el.classList.toggle('active', el.dataset.screen === name));
+    }
+    function setStatus(s) {
+      document.getElementById('btnOnline').classList.toggle('active', s === 'online');
+      document.getElementById('btnOnline').classList.toggle('online', s === 'online');
+      document.getElementById('btnOffline').classList.toggle('active', s === 'offline');
+      document.getElementById('btnOffline').classList.toggle('offline', s === 'offline');
+    }
+    function showToast(msg) {
+      let t = document.getElementById('__toast');
+      if (!t) {
+        t = document.createElement('div');
+        t.id = '__toast';
+        t.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#0a1e1a;border:1px solid rgba(52,211,153,0.4);color:#eafff5;font-size:12px;padding:10px 16px;border-radius:999px;z-index:999;';
+        document.body.appendChild(t);
+      }
+      t.textContent = msg;
+      t.style.display = 'block';
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => { t.style.display = 'none'; }, 2200);
+    }
+    function sairDoApp() {
+      showToast('Saindo...');
+    }
+
+    // ------------------------------------------------------------
+    // FILA LOCAL DE GPS (offline-first) - ver fila-gps-offline.js
+    // ------------------------------------------------------------
+/**
+ * ============================================================
+ * SHIELD — FILA LOCAL DE GPS (Offline-First)
+ * ============================================================
+ * Pensado pro vigilante em rodovia/zona rural, onde o sinal cai com
+ * frequência. Em vez de perder os pontos de GPS quando não há conexão,
+ * eles ficam guardados no próprio navegador (IndexedDB) e são enviados
+ * em lote assim que a conexão volta.
+ *
+ * Por que IndexedDB e não localStorage:
+ *   - localStorage é síncrono (trava a thread a cada leitura/escrita) e
+ *     tem limite baixo (~5-10MB) — arriscado numa viagem longa gerando
+ *     ponto a cada poucos segundos por horas.
+ *   - IndexedDB é assíncrono, aguenta MUITO mais dado, e já vem pronto
+ *     em qualquer navegador (não precisa de biblioteca externa).
+ *
+ * Como usar (dentro do dashboard do prestador, depois do login real):
+ *
+ *   const fila = new FilaGpsOffline({
+ *     providerId: window.CURRENT_PROVIDER_ID,
+ *     enviarLote: async (pontos) => {
+ *       const { error } = await window.sb.from('provider_location_pings').insert(
+ *         pontos.map(p => ({
+ *           provider_id: p.providerId,
+ *           latitude: p.lat,
+ *           longitude: p.lng,
+ *           accuracy: p.accuracy,
+ *           captured_at: new Date(p.timestamp).toISOString(),
+ *           veio_da_fila_offline: p.veioDaFila,
+ *         }))
+ *       );
+ *       if (error) throw error;
+ *     },
+ *   });
+ *   fila.iniciarRastreamento(); // liga o watchPosition + o flush automático
+ *   // fila.pararRastreamento(); // quando o prestador ficar offline/sair
+ * ============================================================
+ */
+
+class FilaGpsOffline {
+  /**
+   * @param {Object} opts
+   * @param {string} opts.providerId
+   * @param {(pontos: Array) => Promise<void>} opts.enviarLote - função que manda o lote pro backend (deve lançar erro se falhar)
+   * @param {number} [opts.intervaloFlushMs=15000] - de quanto em quanto tempo tenta esvaziar a fila
+   * @param {number} [opts.tamanhoMaximoLote=200] - quantos pontos manda por vez, no máximo
+   */
+  constructor({ providerId, enviarLote, intervaloFlushMs = 15000, tamanhoMaximoLote = 200 }) {
+    this.providerId = providerId;
+    this.enviarLote = enviarLote;
+    this.intervaloFlushMs = intervaloFlushMs;
+    this.tamanhoMaximoLote = tamanhoMaximoLote;
+    this.db = null;
+    this.watchId = null;
+    this.flushTimer = null;
+    this.enviandoAgora = false; // evita duas tentativas de flush simultâneas
+  }
+
+  // ------------------------------------------------------------
+  // Infraestrutura do IndexedDB
+  // ------------------------------------------------------------
+  _abrirBanco() {
+    if (this.db) return Promise.resolve(this.db);
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('shield_gps_queue', 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('pontos')) {
+          const store = db.createObjectStore('pontos', { keyPath: 'id', autoIncrement: true });
+          store.createIndex('timestamp', 'timestamp');
+        }
+      };
+      req.onsuccess = () => { this.db = req.result; resolve(this.db); };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async _salvarPonto(ponto) {
+    const db = await this._abrirBanco();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('pontos', 'readwrite');
+      tx.objectStore('pontos').add(ponto);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async _lerPontosPendentes(limite) {
+    const db = await this._abrirBanco();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('pontos', 'readonly');
+      const store = tx.objectStore('pontos');
+      const index = store.index('timestamp');
+      const resultado = [];
+      const cursorReq = index.openCursor();
+      cursorReq.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor && resultado.length < limite) {
+          resultado.push(cursor.value);
+          cursor.continue();
+        } else {
+          resolve(resultado);
+        }
+      };
+      cursorReq.onerror = () => reject(cursorReq.error);
+    });
+  }
+
+  async _removerPontos(ids) {
+    const db = await this._abrirBanco();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('pontos', 'readwrite');
+      const store = tx.objectStore('pontos');
+      ids.forEach((id) => store.delete(id));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  /** Quantos pontos ainda estão esperando pra serem enviados (útil pra mostrar na UI, ex: "12 pontos pendentes"). */
+  async contarPendentes() {
+    const db = await this._abrirBanco();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('pontos', 'readonly');
+      const req = tx.objectStore('pontos').count();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  // ------------------------------------------------------------
+  // Captura de posição (GPS)
+  // ------------------------------------------------------------
+  iniciarRastreamento() {
+    if (!navigator.geolocation) {
+      console.warn('[FilaGpsOffline] Geolocalização não suportada neste navegador.');
+      return;
+    }
+
+    this.watchId = navigator.geolocation.watchPosition(
+      (pos) => this._onNovaPosicao(pos),
+      (err) => console.warn('[FilaGpsOffline] Erro ao obter posição:', err.message),
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+    );
+
+    // Assim que a conexão voltar, tenta esvaziar a fila imediatamente
+    window.addEventListener('online', () => this.tentarEnviarFila());
+
+    // Além do evento "online" (que nem sempre dispara de forma confiável em
+    // celular), tenta de tempos em tempos também - rede "instável" costuma
+    // parecer "online" pro navegador mesmo sem completar requisições.
+    this.flushTimer = setInterval(() => this.tentarEnviarFila(), this.intervaloFlushMs);
+  }
+
+  pararRastreamento() {
+    if (this.watchId !== null) navigator.geolocation.clearWatch(this.watchId);
+    if (this.flushTimer) clearInterval(this.flushTimer);
+    this.watchId = null;
+    this.flushTimer = null;
+  }
+
+  async _onNovaPosicao(pos) {
+    const ponto = {
+      providerId: this.providerId,
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      accuracy: pos.coords.accuracy,
+      timestamp: pos.timestamp || Date.now(),
+    };
+
+    // Tenta mandar direto primeiro (caminho feliz: sinal bom, sem fila)
+    try {
+      await this.enviarLote([{ ...ponto, veioDaFila: false }]);
+    } catch (e) {
+      // Sem sinal / falha de rede -> guarda na fila local, sem perder o ponto
+      await this._salvarPonto(ponto);
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Envio em lote (flush da fila)
+  // ------------------------------------------------------------
+  async tentarEnviarFila() {
+    if (this.enviandoAgora) return; // já tem um flush rodando, não duplica
+    this.enviandoAgora = true;
+    try {
+      const pendentes = await this._lerPontosPendentes(this.tamanhoMaximoLote);
+      if (!pendentes.length) return;
+
+      const lote = pendentes.map((p) => ({
+        providerId: p.providerId, lat: p.lat, lng: p.lng, accuracy: p.accuracy,
+        timestamp: p.timestamp, veioDaFila: true,
+      }));
+
+      await this.enviarLote(lote);
+      await this._removerPontos(pendentes.map((p) => p.id));
+      return lote.length; // quantos pontos foram enviados com sucesso
+    } catch (e) {
+      // Ainda sem sinal (ou o backend recusou) - mantém tudo na fila pra próxima tentativa
+      return 0;
+    } finally {
+      this.enviandoAgora = false;
+    }
+  }
+}
+
+
+
+    // ------------------------------------------------------------
+    // BOTÃO DE PÂNICO (segurar 3s) - ver botao-panico.js
+    // ------------------------------------------------------------
+/**
+ * ============================================================
+ * SHIELD — BOTÃO DE PÂNICO (acionamento por 3 segundos seguros)
+ * ============================================================
+ * Exige pressionar e SEGURAR por 3 segundos, não um simples toque —
+ * evita acionamento acidental (bolso, criança mexendo no celular, etc.)
+ * mantendo o acionamento rápido o bastante numa emergência real.
+ *
+ * Uso (dentro do dashboard do prestador):
+ *   inicializarBotaoPanico({
+ *     elementoId: 'botaoPanico',
+ *     duracaoMs: 3000,
+ *     onAcionar: async () => {
+ *       const pos = await new Promise((resolve, reject) =>
+ *         navigator.geolocation.getCurrentPosition(resolve, reject)
+ *       );
+ *       const resp = await fetch('/api/acionar-panico', {
+ *         method: 'POST',
+ *         headers: { 'Content-Type': 'application/json' },
+ *         body: JSON.stringify({
+ *           providerId: window.CURRENT_PROVIDER_ID,
+ *           latitude: pos.coords.latitude,
+ *           longitude: pos.coords.longitude,
+ *         }),
+ *       });
+ *       if (!resp.ok) throw new Error('Falha ao acionar pânico');
+ *     },
+ *   });
+ * ============================================================
+ */
+
+function inicializarBotaoPanico({ elementoId, duracaoMs = 3000, onAcionar, onProgresso, onCancelado, onSucesso, onErro }) {
+  const el = document.getElementById(elementoId);
+  if (!el) throw new Error(`Elemento #${elementoId} não encontrado.`);
+
+  let inicioPressao = null;
+  let animFrame = null;
+  let acionando = false;
+  let jaAcionou = false;
+
+  function tick() {
+    if (inicioPressao === null) return;
+    const decorrido = Date.now() - inicioPressao;
+    const progresso = Math.min(decorrido / duracaoMs, 1);
+    if (onProgresso) onProgresso(progresso);
+
+    if (progresso >= 1 && !jaAcionou) {
+      jaAcionou = true;
+      disparar();
+      return;
+    }
+    animFrame = requestAnimationFrame(tick);
+  }
+
+  async function disparar() {
+    acionando = true;
+    try {
+      await onAcionar();
+      if (onSucesso) onSucesso();
+    } catch (e) {
+      if (onErro) onErro(e);
+    } finally {
+      acionando = false;
+      resetar();
+    }
+  }
+
+  function resetar() {
+    inicioPressao = null;
+    jaAcionou = false;
+    if (animFrame) cancelAnimationFrame(animFrame);
+    animFrame = null;
+    if (onProgresso) onProgresso(0);
+  }
+
+  function onPressStart(e) {
+    e.preventDefault();
+    if (acionando) return; // já em andamento, ignora nova pressão
+    inicioPressao = Date.now();
+    jaAcionou = false;
+    animFrame = requestAnimationFrame(tick);
+  }
+
+  function onPressEnd() {
+    if (acionando) return; // já disparou e está processando - não cancela no meio
+    if (inicioPressao !== null && !jaAcionou) {
+      if (onCancelado) onCancelado();
+    }
+    resetar();
+  }
+
+  el.addEventListener('pointerdown', onPressStart);
+  el.addEventListener('pointerup', onPressEnd);
+  el.addEventListener('pointerleave', onPressEnd);
+  el.addEventListener('pointercancel', onPressEnd);
+
+  // Expõe uma forma de "desligar" o botão (ex: se o prestador sair da tela)
+  return function destruir() {
+    el.removeEventListener('pointerdown', onPressStart);
+    el.removeEventListener('pointerup', onPressEnd);
+    el.removeEventListener('pointerleave', onPressEnd);
+    el.removeEventListener('pointercancel', onPressEnd);
+    resetar();
+  };
+}
+
+
+
+    // ------------------------------------------------------------
+    // Estado real (injetado pelo app principal via iframe):
+    // window.sb (cliente Supabase), window.CURRENT_PROVIDER_ID,
+    // window.CURRENT_COMPANY_NAME, window.CURRENT_STATUS_APROVACAO
+    // ------------------------------------------------------------
+    let __filaGps = null;
+
+    window.addEventListener('load', function () {
+      if (window.CURRENT_COMPANY_NAME) {
+        document.getElementById('empresaNome').textContent = window.CURRENT_COMPANY_NAME;
+      }
+      if (window.CURRENT_STATUS_APROVACAO === 'pendente') {
+        document.getElementById('pendingBanner').style.display = 'block';
+        document.getElementById('vinculoBadge').className = 'vinculado-badge pendente';
+        document.getElementById('vinculoBadge').innerHTML = '<span class="dot"></span> Vínculo pendente';
+        document.getElementById('statusToggle').style.opacity = '0.4';
+        document.getElementById('statusToggle').style.pointerEvents = 'none';
+      }
+
+      // Fila de GPS offline-first: só roda de verdade se estiver aprovado e com CURRENT_PROVIDER_ID
+      if (window.CURRENT_PROVIDER_ID && window.CURRENT_STATUS_APROVACAO !== 'pendente') {
+        __filaGps = new FilaGpsOffline({
+          providerId: window.CURRENT_PROVIDER_ID,
+          enviarLote: async (pontos) => {
+            if (!window.sb) throw new Error('Supabase ainda não disponível');
+            const { error } = await window.sb.from('provider_location_pings').insert(
+              pontos.map((p) => ({
+                provider_id: p.providerId,
+                latitude: p.lat,
+                longitude: p.lng,
+                accuracy: p.accuracy,
+                captured_at: new Date(p.timestamp).toISOString(),
+                veio_da_fila_offline: p.veioDaFila,
+              }))
+            );
+            if (error) throw error;
+          },
+        });
+        __filaGps.iniciarRastreamento();
+      }
+
+      // Botão de pânico
+      inicializarBotaoPanico({
+        elementoId: 'botaoPanico',
+        duracaoMs: 3000,
+        onProgresso: (p) => {
+          const circle = document.getElementById('panicProgressCircle');
+          const total = 289; // 2*pi*46, arredondado
+          circle.style.strokeDashoffset = String(total * (1 - p));
+          document.getElementById('panicStatus').textContent = p > 0 ? 'Acionando... ' + Math.round(p * 100) + '%' : '';
+        },
+        onCancelado: () => {
+          document.getElementById('panicStatus').textContent = '';
+        },
+        onAcionar: async () => {
+          document.getElementById('panicStatus').textContent = 'Obtendo localização...';
+          const pos = await new Promise((resolve, reject) => {
+            if (!navigator.geolocation) return reject(new Error('Geolocalização indisponível'));
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 });
+          });
+          const resp = await fetch('/api/acionar-panico', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              providerId: window.CURRENT_PROVIDER_ID,
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+            }),
+          });
+          if (!resp.ok) throw new Error('Falha ao acionar pânico');
+        },
+        onSucesso: () => {
+          document.getElementById('panicStatus').textContent = '✓ Alerta enviado — ajuda a caminho';
+          document.getElementById('panicStatus').style.color = '#6ee7b7';
+          showToast('Pânico acionado! Empresa e ShielD foram notificados.');
+        },
+        onErro: (e) => {
+          document.getElementById('panicStatus').textContent = 'Falha ao acionar — tente novamente ou ligue direto';
+          document.getElementById('panicStatus').style.color = '#fca5a5';
+          showToast('Não foi possível confirmar o acionamento: ' + e.message);
+        },
+      });
+    });
+  </script>
+</body>
+</html>

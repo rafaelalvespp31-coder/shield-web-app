@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Índice — App.tsx (ShielD)</title>
+<style>
+  :root{
+    --gold:#c98b1e; --gold-light:#e8bc5e; --dark:#1c1a18; --panel:#2a2620;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+    background:linear-gradient(160deg,#201d1a,#1c1a17); color:#f0e6cf; padding:24px 14px 60px;
+  }
+  .wrap{max-width:760px; margin:0 auto;}
+  h1{font-size:20px; margin:0 0 4px;}
+  .sub{color:rgba(240,230,207,0.6); font-size:12.5px; margin-bottom:24px;}
+  .toc{
+    background:rgba(255,255,255,0.05); border:1px solid rgba(232,188,94,0.3);
+    border-radius:14px; padding:14px 18px; margin-bottom:26px; font-size:13px;
+  }
+  .toc a{color:var(--gold-light); text-decoration:none;}
+  .toc a:hover{text-decoration:underline;}
+  .toc ol{margin:6px 0 0; padding-left:20px;}
+  section{
+    background:var(--panel); border:1px solid rgba(232,188,94,0.25);
+    border-radius:16px; padding:18px 20px; margin-bottom:16px;
+  }
+  section h2{
+    margin:0 0 10px; font-size:15px; color:var(--gold-light);
+    display:flex; align-items:center; gap:8px;
+  }
+  .line{
+    font-size:11px; color:rgba(240,230,207,0.45); background:rgba(0,0,0,0.25);
+    padding:1px 7px; border-radius:6px; font-family:monospace;
+  }
+  ul{margin:6px 0 0; padding-left:20px; font-size:13px; line-height:1.7;}
+  code{
+    background:rgba(0,0,0,0.3); padding:1px 6px; border-radius:5px; font-size:12px;
+    color:#f5d998;
+  }
+  .desc{color:rgba(240,230,207,0.75); font-size:13px; margin:4px 0 0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Índice — <code>App.tsx</code> (ShielD)</h1>
+  <div class="sub">Mapa de navegação dos componentes/telas construídos, na ordem do arquivo enviado.</div>
+
+  <div class="toc">
+    <strong>Sumário</strong>
+    <ol>
+      <li><a href="#s1">Dados e constantes globais</a></li>
+      <li><a href="#s2">Componentes de UI base</a></li>
+      <li><a href="#s3">Campos de formulário</a></li>
+      <li><a href="#s4">Modais genéricos</a></li>
+      <li><a href="#s5">Termos de uso</a></li>
+      <li><a href="#s6">Cadastro (cliente e prestador)</a></li>
+      <li><a href="#s7">Login</a></li>
+      <li><a href="#s8">Dashboards (cliente / prestador)</a></li>
+      <li><a href="#s9">App raiz</a></li>
+      <li><a href="#s10">Seções internas do dashboard (HTML/CSS embutido)</a></li>
+    </ol>
+  </div>
+
+  <section id="s1">
+    <h2>1. Dados e constantes globais</h2>
+    <ul>
+      <li><code>CATEGORIAS</code> — Lojas, Mercados, Eventos, Galpão, Apoio, Bar/Restaurante, Portaria</li>
+      <li><code>LOGO_SRC_PRESTADOR</code> / <code>LOGO_SRC_CLIENTE</code> — logos em base64</li>
+      <li><code>DASHBOARD_HTML</code> — HTML completo do dashboard do prestador, embutido como string</li>
+    </ul>
+  </section>
+
+  <section id="s2">
+    <h2>2. Componentes de UI base <span class="line">linhas 15–575</span></h2>
+    <ul>
+      <li><code>CleanBackground</code> <span class="line">15</span> — fundo estilizado (tons teal/dourado)</li>
+      <li><code>ChromeShield</code> <span class="line">494</span> — ícone de escudo cromado, com pulso opcional</li>
+      <li><code>AngledButton</code> <span class="line">532</span> — botão de CTA com borda angulada</li>
+      <li><code>StepDots</code> <span class="line">559</span> — indicador de progresso do wizard de cadastro</li>
+    </ul>
+  </section>
+
+  <section id="s3">
+    <h2>3. Campos de formulário <span class="line">linhas 577–657</span></h2>
+    <ul>
+      <li><code>Field</code> <span class="line">577</span> — input com label/erro</li>
+      <li><code>PasswordField</code> <span class="line">588</span> — mostrar/ocultar senha + força</li>
+      <li><code>FileUploadField</code> <span class="line">623</span> — upload (antecedentes, foto do RG)</li>
+    </ul>
+  </section>
+
+  <section id="s4">
+    <h2>4. Modais genéricos <span class="line">linhas 658–692</span></h2>
+    <ul>
+      <li><code>Modal</code> <span class="line">658</span> — shell padrão de modal</li>
+      <li><code>SuccessBlock</code> <span class="line">679</span> — tela de sucesso pós-ação</li>
+    </ul>
+  </section>
+
+  <section id="s5">
+    <h2>5. Termos de uso <span class="line">linhas 693–799</span></h2>
+    <ul>
+      <li><code>TermosConteudo</code> <span class="line">693</span> — texto integral dos termos</li>
+      <li><code>TermosStep</code> <span class="line">765</span> — etapa de aceite (usada nos dois cadastros)</li>
+    </ul>
+  </section>
+
+  <section id="s6">
+    <h2>6. Cadastro (multi-step) <span class="line">linhas 800–1032</span></h2>
+    <ul>
+      <li><code>CadastroClienteModal</code> <span class="line">800</span>
+        <div class="desc">form: nome, email, telefone, cpf, senha · fluxo: validateStep → next → submit</div>
+      </li>
+      <li><code>CadastroPrestadorModal</code> <span class="line">894</span>
+        <div class="desc">form: nome, email, telefone, cpfCnpj, senha, bio + categorias[] (toggleCategoria) + antecedentes/fotoRg (arquivos)</div>
+      </li>
+    </ul>
+  </section>
+
+  <section id="s7">
+    <h2>7. Login <span class="line">linhas 1033–1069</span></h2>
+    <ul>
+      <li><code>LoginModal</code> <span class="line">1033</span> — form: email, senha · submit() → onLoginSuccess()</li>
+    </ul>
+  </section>
+
+  <section id="s8">
+    <h2>8. Dashboards <span class="line">linhas 1070–1114</span></h2>
+    <ul>
+      <li><code>ProviderDashboard</code> <span class="line">1070</span> — renderiza o <code>DASHBOARD_HTML</code> (painel do prestador)</li>
+      <li><code>ClientDashboard</code> <span class="line">1093</span> — painel do cliente</li>
+    </ul>
+  </section>
+
+  <section id="s9">
+    <h2>9. App raiz (default export) <span class="line">linha 1115</span></h2>
+    <ul>
+      <li>Estados: <code>role</code>, <code>modal</code>, <code>screen</code>, <code>toast</code></li>
+      <li>Roteamento por <code>screen</code>: <code>providerDashboard</code> · <code>clientDashboard</code> · home (padrão)</li>
+      <li><code>showToast(msg)</code> — feedback temporário</li>
+    </ul>
+  </section>
+
+  <section id="s10">
+    <h2>10. Seções internas do Dashboard (HTML/CSS embutido)</h2>
+    <ul>
+      <li>Fundo animado (mapa de Belo Horizonte, chips eletrônicos, partículas)</li>
+      <li>Cabeçalho: avatar, nome, selo, menu de perfil</li>
+      <li>Badge de avaliação (estrela 3D) e selo da marca</li>
+      <li>Estatísticas: carteira mini (com ocultar/mostrar saldo)</li>
+      <li>Toggle Online/Offline + indicador de status (LED)</li>
+      <li>Notificações e botões de ação (com badge "Ativos")</li>
+      <li>Cards de Demanda: natureza, urgência, selo de qualidade, Aceitar/Recusar</li>
+      <li>Card "Elite/Avançado" (estilo dourado diferenciado)</li>
+      <li>Lembrete de serviço agendado</li>
+      <li>Carteira e desempenho (gráfico de barras, ganhos)</li>
+      <li>Atividade recente + Toast</li>
+      <li>Overlay Offline + botão "Ficar Online"</li>
+      <li>Modal de negociação de preço</li>
+      <li>Trilha de níveis: Bronze → Prata → Ouro → Platina</li>
+      <li>Configurações (switches)</li>
+      <li>Chat com o cliente (tela cheia)</li>
+      <li>Página "Gerenciar Agenda" (abas)</li>
+    </ul>
+  </section>
+</div>
+</body>
+</html>
