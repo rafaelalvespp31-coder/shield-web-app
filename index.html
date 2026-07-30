@@ -494,7 +494,8 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
 const {
   useState,
   useMemo,
-  useRef
+  useRef,
+  useEffect
 } = React;
 const {
   createRoot
@@ -3080,10 +3081,70 @@ function App() {
     statusAprovacao: null
   });
   const tone = role === 'cliente' ? 'teal' : (role === 'empresa' || role === 'vinculado') ? 'empresa' : 'gold';
+  const [sessaoVerificada, setSessaoVerificada] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const {
+          data: {
+            session
+          }
+        } = await sb.auth.getSession();
+        if (!session || !session.user) {
+          setSessaoVerificada(true);
+          return;
+        }
+        const userId = session.user.id;
+        setCurrentUserId(userId);
+        const {
+          data: profile
+        } = await sb.from('profiles').select('role').eq('id', userId).maybeSingle();
+        if (!profile) {
+          setSessaoVerificada(true);
+          return;
+        }
+        if (profile.role === 'client') {
+          setScreen('clientDashboard');
+        } else if (profile.role === 'company') {
+          const {
+            data: empresa
+          } = await sb.from('empresas_parceiras').select('id').eq('owner_id', userId).maybeSingle();
+          setCompanyId(empresa ? empresa.id : null);
+          setScreen('empresaDashboard');
+        } else if (profile.role === 'provider') {
+          const {
+            data: prestadorInfo
+          } = await sb.from('usuarios_prestadores').select('tipo_prestador, status_aprovacao, company_id, empresas_parceiras(razao_social)').eq('id', userId).maybeSingle();
+          if (prestadorInfo && prestadorInfo.tipo_prestador === 'vinculado') {
+            setVinculoInfo({
+              empresaNome: prestadorInfo.empresas_parceiras ? prestadorInfo.empresas_parceiras.razao_social : null,
+              statusAprovacao: prestadorInfo.status_aprovacao
+            });
+            setScreen('prestadorVinculadoDashboard');
+          } else {
+            setScreen('providerDashboard');
+          }
+        }
+      } catch (e) {
+        // se der erro ao restaurar a sessão, fica na tela inicial normalmente
+      } finally {
+        setSessaoVerificada(true);
+      }
+    })();
+  }, []);
+
   const showToast = msg => {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
   };
+  if (!sessaoVerificada) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "min-h-screen w-full flex items-center justify-center bg-black"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "text-slate-400 text-sm"
+    }, "Carregando..."));
+  }
   if (screen === 'providerDashboard') {
     return /*#__PURE__*/React.createElement(ProviderDashboard, {
       onBack: () => setScreen('home'),
