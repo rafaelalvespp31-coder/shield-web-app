@@ -2522,74 +2522,10 @@ function randomFacilityDemand(){
   };
 }
 
-function randomPlantaoUrgenciaDemand(){
-  const loc = locations[Math.floor(Math.random()*locations.length)];
-  const horasRestantes = Math.floor(Math.random()*3+1); // 1 a 3 horas restantes do posto
-  const calc = calcularServicoShield({ categoriaTier: 'Padrão', urgencia: 'Urgente', inicioISO: new Date().toISOString(), duracaoHoras: horasRestantes, endereco: loc.name });
-  // Bônus de Plantão de Urgência: +10% sobre o valor das horas restantes, por cima do cálculo normal
-  const valorComBonus = arredondarFinanceiro(calc.valorTotalPrestador * 1.10);
-  const bonusPlantao = arredondarFinanceiro(valorComBonus - calc.valorTotalPrestador);
-  calc.adicionais = [...calc.adicionais, `Plantão de Urgência (+10%): + ${fmtBRL(bonusPlantao)}`];
-  calc.valorTotalPrestador = valorComBonus;
-  const tipoSorteadoPU = types[Math.floor(Math.random()*types.length)];
-  return {
-    id: demandIdSeq++,
-    type: tipoSorteadoPU,
-    tier: 'Padrão',
-    natureza: 'Imediata',
-    scheduledFor: null,
-    isPlantaoUrgencia: true,
-    location: loc.name,
-    bairro: loc.bairro,
-    clientLat: loc.lat,
-    clientLng: loc.lng,
-    client: sortearClientePorTipo(tipoSorteadoPU),
-    distance: (Math.random()*1.5+0.2).toFixed(1),
-    eta: Math.floor(Math.random()*5+2),
-    duration: horasRestantes * 60,
-    value: valorComBonus,
-    timeLeft: 30,
-    pricing: calc
-  };
-}
-
 function randomDemand(){
-  const roll = Math.random();
-  if(!jaAceitouImediata && roll < 0.08){
-    return randomPlantaoUrgenciaDemand(); // vaga de emergência - substituição por força maior de outro prestador
-  }
-  if(roll < 0.20 && providerAprovadoElite){
-    return randomEliteDemand(); // restrito a prestadores aprovados - se não aprovado, nunca aparece
-  }
-  if(roll < 0.35){
-    return randomFacilityDemand();
-  }
-  const loc = locations[Math.floor(Math.random()*locations.length)];
-  const horas = 10 + Math.floor(Math.random()*3); // 10 a 12 horas
-  const calc = calcularServicoShield({ categoriaTier: 'Padrão', urgencia: 'Urgente', inicioISO: new Date().toISOString(), duracaoHoras: horas, endereco: loc.name });
-  const natureza = sortearNatureza();
-  const tipoSorteadoPadrao = types[Math.floor(Math.random()*types.length)];
-  return {
-    id: demandIdSeq++,
-    type: tipoSorteadoPadrao,
-    tier: 'Padrão',
-    natureza,
-    scheduledFor: natureza !== 'Imediata' ? gerarAgendamentoFuturo() : null,
-    diasDisponiveis: natureza === 'Recorrente' ? gerarDiasDisponiveisCliente() : null,
-    location: loc.name,
-    bairro: loc.bairro,
-    clientLat: loc.lat,
-    clientLng: loc.lng,
-    client: sortearClientePorTipo(tipoSorteadoPadrao),
-    distance: (Math.random()*2+0.3).toFixed(1),
-    eta: Math.floor(Math.random()*8+2),
-    duration: horas * 60,
-    value: calc.valorTotalPrestador,
-    timeLeft: 30,
-    pricing: calc
-  };
+  // Simulação desativada para carregar dados reais do Supabase
+  return null;
 }
-
 let currentlyRenderedDemandId = null;
 
 async function renderDemandCard(){
