@@ -2574,7 +2574,7 @@ function CadastroEmpresaModal({
   }), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: capturarLocalizacao,
-    className: "w-full flex items-center justify-center gap-2 text-xs font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3 py-2.5 mb-3 hover:bg-emerald-500/20"
+    className: "w-full flex items-center justify-center gap-2 text-xs font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3 py-2.5 mb-3 hover:bg-emerald-500/10"
   }, locatingStatus === 'locating' ? /*#__PURE__*/React.createElement(Loader2, {
     className: "w-3.5 h-3.5 animate-spin"
   }) : /*#__PURE__*/React.createElement(Shield, {
@@ -2667,7 +2667,7 @@ function LoginModal({
   };
   return /*#__PURE__*/React.createElement(Modal, {
     tone: tone,
-    title: role === 'prestador' ? 'Entrar como Prestador' : role === 'empresa' ? 'Entrar como Empresa' : 'Entrar como Cliente',
+    title: role === 'prestador' ? 'Entrar como Prestador' : role === 'vinculado' ? 'Entrar como Vigilante Vinculado' : role === 'empresa' ? 'Entrar como Empresa' : 'Entrar como Cliente',
     onClose: onClose
   }, /*#__PURE__*/React.createElement("form", {
     onSubmit: submit
@@ -2845,6 +2845,229 @@ function PrestadorVinculadoDashboard({
 // ---------------------------------------------------------------
 // HOME
 // ---------------------------------------------------------------
+// ---------------------------------------------------------------
+// VIGILANTE VINCULADO — validação de código da empresa + cadastro
+// (usa a função SQL validar_token_convite, que precisa ser criada
+// no banco antes de usar este cadastro — ver validar_token_convite.sql)
+// ---------------------------------------------------------------
+async function validarCodigoEmpresa(codigoEmpresa) {
+  const codigo = (codigoEmpresa || '').trim().toUpperCase();
+  if (!codigo) return { valido: false, motivo: 'codigo_vazio' };
+  const { data, error } = await sb.rpc('validar_token_convite', { p_token: codigo });
+  if (error || !data) return { valido: false, motivo: 'erro_ao_validar' };
+  return { valido: !!data.valido, empresaNome: data.empresa_nome || null, motivo: data.motivo || null };
+}
+
+function mensagemErroCodigoEmpresa(motivo) {
+  switch (motivo) {
+    case 'codigo_invalido': return 'Código não encontrado. Confira com a empresa.';
+    case 'codigo_ja_utilizado_ou_revogado': return 'Esse código já foi usado ou foi cancelado.';
+    case 'codigo_expirado': return 'Esse código expirou. Peça um novo.';
+    case 'codigo_vazio': return 'Digite o código da empresa.';
+    default: return 'Não foi possível validar o código agora. Tente novamente.';
+  }
+}
+
+async function cadastrarPrestadorVinculado({ nome, email, telefone, cpfCnpj, senha, bio, codigoEmpresa, categorias }) {
+  const validacao = await validarCodigoEmpresa(codigoEmpresa);
+  if (!validacao.valido) {
+    return { success: false, error: mensagemErroCodigoEmpresa(validacao.motivo) };
+  }
+  const { data, error } = await sb.auth.signUp({
+    email, password: senha,
+    options: { data: { full_name: nome, phone: telefone, cpf_cnpj: cpfCnpj, role: 'provider' } },
+  });
+  if (error) return { success: false, error: error.message || 'Erro ao criar a conta.' };
+  if (!data.user) return { success: false, error: 'Cadastro não retornou usuário. Tente novamente.' };
+  const userId = data.user.id;
+  try {
+    const { error: profileError } = await sb.from('profiles').upsert({
+      id: userId, role: 'provider', full_name: nome, phone: telefone, cpf_cnpj: cpfCnpj,
+    });
+    if (profileError) throw profileError;
+
+    const { error: providerError } = await sb.from('usuarios_prestadores').upsert({
+      id: userId, bio, verified: false, documents_status: 'pending',
+    });
+    if (providerError) throw providerError;
+
+    if (categorias && categorias.length) {
+      const { data: cats, error: catsError } = await sb.from('service_categories').select('id,name').in('name', categorias);
+      if (catsError) throw catsError;
+      if (cats && cats.length) {
+        const rows = cats.map((c) => ({ provider_id: userId, category_id: c.id }));
+        const { error: pcError } = await sb.from('provider_categories').insert(rows);
+        if (pcError) throw pcError;
+      }
+    }
+
+    const { data: resgate, error: resgateError } = await sb.rpc('redimir_token_convite', {
+      p_token: (codigoEmpresa || '').trim().toUpperCase(),
+      p_provider_id: userId,
+    });
+    if (resgateError) throw resgateError;
+    if (!resgate || !resgate.success) {
+      return {
+        success: false,
+        error: 'O código já não está mais válido (pode ter sido usado por outra pessoa nesse instante). Sua conta foi criada — peça um novo código à empresa e entre em contato com o suporte para vincular.',
+      };
+    }
+    return { success: true, empresaNome: validacao.empresaNome };
+  } catch (err) {
+    return { success: false, error: (err && err.message) || 'Erro ao concluir o cadastro. Tente novamente.' };
+  }
+}
+
+const CATEGORIAS_VINCULADO = ['Escolta Armada', 'VSSP', 'Vigilante', 'Controle de Acesso', 'Facility'];
+
+function CadastroPrestadorVinculado({ onClose, onSuccess }) {
+  const [step, setStep] = useState(0);
+  const [form, setForm] = useState({ nome: '', email: '', telefone: '', cpfCnpj: '', senha: '', bio: '' });
+  const [categorias, setCategorias] = useState([]);
+  const [codigoEmpresa, setCodigoEmpresa] = useState('');
+  const [statusCodigo, setStatusCodigo] = useState('idle');
+  const [empresaNome, setEmpresaNome] = useState(null);
+  const [erroCodigo, setErroCodigo] = useState(null);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const debounceRef = useRef(null);
+
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const toggleCategoria = (cat) => setCategorias((prev) => prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]);
+
+  const validarCodigoAoVivo = (valor) => {
+    setCodigoEmpresa(valor);
+    setStatusCodigo('idle');
+    setErroCodigo(null);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!valor.trim()) return;
+    debounceRef.current = setTimeout(async () => {
+      setStatusCodigo('checando');
+      const resultado = await validarCodigoEmpresa(valor);
+      if (resultado.valido) {
+        setStatusCodigo('valido');
+        setEmpresaNome(resultado.empresaNome);
+      } else {
+        setStatusCodigo('invalido');
+        setErroCodigo(mensagemErroCodigoEmpresa(resultado.motivo));
+      }
+    }, 500);
+  };
+
+  const validateStep = () => {
+    const e = {};
+    if (step === 0) {
+      if (!form.nome.trim()) e.nome = 'Informe seu nome completo';
+      if (!/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'E-mail inválido';
+      if (form.telefone.replace(/\D/g, '').length < 10) e.telefone = 'Telefone inválido';
+      if (![11, 14].includes(form.cpfCnpj.replace(/\D/g, '').length)) e.cpfCnpj = 'CPF/CNPJ inválido';
+      if (form.senha.length < 6) e.senha = 'Mínimo de 6 caracteres';
+    }
+    if (step === 1 && categorias.length === 0) e.categorias = 'Selecione ao menos uma categoria';
+    if (step === 2 && statusCodigo !== 'valido') e.codigo = 'Informe um código de empresa válido';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const next = () => { if (validateStep()) setStep((s) => s + 1); };
+  const voltar = () => setStep((s) => Math.max(0, s - 1));
+
+  const submit = async () => {
+    if (!validateStep()) return;
+    setSaving(true);
+    try {
+      const resultado = await cadastrarPrestadorVinculado({
+        nome: form.nome, email: form.email, telefone: form.telefone, cpfCnpj: form.cpfCnpj,
+        senha: form.senha, bio: form.bio, codigoEmpresa, categorias,
+      });
+      if (!resultado.success) { setErrors({ geral: resultado.error }); return; }
+      setDone(true);
+      setTimeout(() => { onSuccess && onSuccess(resultado.empresaNome); onClose(); }, 1200);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const fieldStyle = "w-full border border-emerald-500/40 outline-none rounded-lg px-3 py-2.5 text-sm";
+  const fieldColors = {
+    backgroundColor: '#ffffff',
+    color: '#111827'
+  };
+
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-full sm:max-w-md max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-2xl border border-emerald-500/40 p-6 relative",
+    style: {
+      backgroundColor: '#060f0d'
+    }
+  },
+    /*#__PURE__*/React.createElement("button", { onClick: onClose, className: "absolute top-4 right-4 text-emerald-300 hover:text-white" }, "\u2715"),
+    /*#__PURE__*/React.createElement("h2", { className: "text-xl font-bold mb-1 text-emerald-300" }, "Cadastro \u2014 Vigilante Vinculado"),
+    /*#__PURE__*/React.createElement("p", { className: "text-xs text-emerald-300 mb-5" }, "Para profissionais que atuam atrav\u00e9s de uma empresa parceira ShielD"),
+    done ? /*#__PURE__*/React.createElement("div", { className: "py-8 text-center" },
+      /*#__PURE__*/React.createElement("div", { className: "text-4xl mb-2" }, "\u2713"),
+      /*#__PURE__*/React.createElement("p", { className: "text-emerald-300" }, `Cadastro enviado! Aguardando aprovação de ${empresaNome}.`)
+    ) : (
+      step === 0 ? /*#__PURE__*/React.createElement("div", null,
+        ['nome', 'email', 'telefone', 'cpfCnpj', 'senha'].map((campo) => /*#__PURE__*/React.createElement("label", { className: "block mb-3", key: campo },
+          /*#__PURE__*/React.createElement("span", { className: "text-xs text-emerald-300 mb-1 block" }, ({ nome: 'Nome completo', email: 'E-mail', telefone: 'Telefone', cpfCnpj: 'CPF/CNPJ', senha: 'Senha' })[campo]),
+          /*#__PURE__*/React.createElement("input", {
+            type: campo === 'senha' ? 'password' : campo === 'email' ? 'email' : 'text',
+            value: form[campo], onChange: set(campo), className: fieldStyle, style: fieldColors
+          }),
+          errors[campo] && /*#__PURE__*/React.createElement("p", { className: "text-red-400 text-xs mt-1" }, errors[campo])
+        )),
+        /*#__PURE__*/React.createElement("label", { className: "block mb-3" },
+          /*#__PURE__*/React.createElement("span", { className: "text-xs text-emerald-300 mb-1 block" }, "Experi\u00eancia / Bio"),
+          /*#__PURE__*/React.createElement("textarea", { value: form.bio, onChange: set('bio'), rows: 2, className: fieldStyle, style: fieldColors })
+        ),
+        /*#__PURE__*/React.createElement("button", { onClick: next, className: "w-full mt-2 py-3 rounded-lg font-bold text-slate-900 bg-gradient-to-b from-emerald-300 to-emerald-600" }, "Continuar")
+      ) : step === 1 ? /*#__PURE__*/React.createElement("div", null,
+        /*#__PURE__*/React.createElement("span", { className: "text-xs text-emerald-300 mb-2 block" }, "Categorias de atendimento"),
+        /*#__PURE__*/React.createElement("div", { className: "grid grid-cols-2 gap-2 mb-4" },
+          CATEGORIAS_VINCULADO.map((cat) => /*#__PURE__*/React.createElement("button", {
+            key: cat, type: "button", onClick: () => toggleCategoria(cat),
+            className: `text-xs px-2 py-2 rounded-lg border text-left transition ${categorias.includes(cat) ? 'bg-emerald-500/10 border-emerald-400 text-emerald-300' : 'border-emerald-500/40 text-emerald-300'}`,
+            style: categorias.includes(cat) ? {} : {
+              backgroundColor: '#0a1e1a'
+            }
+          }, cat))
+        ),
+        errors.categorias && /*#__PURE__*/React.createElement("p", { className: "text-red-400 text-xs mb-2" }, errors.categorias),
+        /*#__PURE__*/React.createElement("div", { className: "flex gap-2" },
+          /*#__PURE__*/React.createElement("button", { onClick: voltar, className: "flex-1 py-3 rounded-lg font-bold text-emerald-300 border border-emerald-500/40", style: { backgroundColor: '#0a1e1a' } }, "Voltar"),
+          /*#__PURE__*/React.createElement("button", { onClick: next, className: "flex-1 py-3 rounded-lg font-bold text-slate-900 bg-gradient-to-b from-emerald-300 to-emerald-600" }, "Continuar")
+        )
+      ) : /*#__PURE__*/React.createElement("div", null,
+        /*#__PURE__*/React.createElement("div", { className: "mb-4" },
+          /*#__PURE__*/React.createElement("span", { className: "text-xs text-emerald-300 mb-1 block" }, "C\u00f3digo da Empresa"),
+          /*#__PURE__*/React.createElement("input", {
+            value: codigoEmpresa, onChange: (e) => validarCodigoAoVivo(e.target.value),
+            placeholder: "Ex: SNT-7X29",
+            className: fieldStyle + " uppercase tracking-wide",
+            style: fieldColors
+          }),
+          statusCodigo === 'checando' && /*#__PURE__*/React.createElement("p", { className: "text-[11px] text-emerald-400 mt-1" }, "Verificando c\u00f3digo..."),
+          statusCodigo === 'valido' && /*#__PURE__*/React.createElement("p", { className: "text-[11px] text-emerald-400 mt-1" }, `✓ Código válido — vínculo com ${empresaNome}`),
+          statusCodigo === 'invalido' && /*#__PURE__*/React.createElement("p", { className: "text-[11px] text-red-400 mt-1" }, erroCodigo),
+          /*#__PURE__*/React.createElement("p", { className: "text-[11px] text-emerald-300 mt-1" }, "Pe\u00e7a esse c\u00f3digo para o respons\u00e1vel da empresa parceira onde voc\u00ea vai atuar.")
+        ),
+        errors.codigo && /*#__PURE__*/React.createElement("p", { className: "text-red-400 text-xs mb-2" }, errors.codigo),
+        errors.geral && /*#__PURE__*/React.createElement("p", { className: "text-red-400 text-xs mb-2" }, errors.geral),
+        /*#__PURE__*/React.createElement("div", { className: "flex gap-2" },
+          /*#__PURE__*/React.createElement("button", { onClick: voltar, className: "flex-1 py-3 rounded-lg font-bold text-emerald-300 border border-emerald-500/40", style: { backgroundColor: '#0a1e1a' } }, "Voltar"),
+          /*#__PURE__*/React.createElement("button", {
+            onClick: submit, disabled: saving || statusCodigo !== 'valido',
+            className: "flex-1 py-3 rounded-lg font-bold text-slate-900 bg-gradient-to-b from-emerald-300 to-emerald-600 disabled:opacity-50"
+          }, saving ? 'Enviando...' : 'Enviar Cadastro')
+        )
+      )
+    )
+  ));
+}
+
 function App() {
   const [role, setRole] = useState('cliente');
   const [modal, setModal] = useState(null);
@@ -2856,7 +3079,7 @@ function App() {
     empresaNome: null,
     statusAprovacao: null
   });
-  const tone = role === 'cliente' ? 'teal' : role === 'empresa' ? 'empresa' : 'gold';
+  const tone = role === 'cliente' ? 'teal' : (role === 'empresa' || role === 'vinculado') ? 'empresa' : 'gold';
   const showToast = msg => {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
@@ -2931,9 +3154,10 @@ function App() {
   }, /*#__PURE__*/React.createElement("div", {
     className: "relative flex bg-black/30 rounded-full p-1 w-64 h-11 border border-slate-700/50"
   }, /*#__PURE__*/React.createElement("div", {
-    className: `absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full transition-transform duration-300 ease-out bg-gradient-to-b ${tone === 'gold' ? 'from-amber-300 to-yellow-500' : 'from-cyan-300 to-cyan-500'}`,
+    className: `absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-out bg-gradient-to-b ${tone === 'gold' ? 'from-amber-300 to-yellow-500' : 'from-cyan-300 to-cyan-500'}`,
     style: {
-      transform: role === 'prestador' ? 'translateX(100%)' : 'translateX(0)'
+      transform: role === 'prestador' ? 'translateX(100%)' : 'translateX(0)',
+      opacity: (role === 'cliente' || role === 'prestador') ? 1 : 0
     }
   }), /*#__PURE__*/React.createElement("button", {
     type: "button",
@@ -2951,11 +3175,11 @@ function App() {
     }
   }, "PRESTADOR"))), /*#__PURE__*/React.createElement("p", {
     className: "text-center text-slate-300 text-sm mt-6 leading-relaxed px-2"
-  }, role === 'cliente' ? 'Solicite proteção imediata ou agendada de profissionais verificados' : 'Cadastre-se para atender demandas de proteção como profissional verificado'), /*#__PURE__*/React.createElement("div", {
+  }, role === 'cliente' ? 'Solicite prote\xE7\xE3o imediata ou agendada de profissionais verificados' : role === 'prestador' ? 'Cadastre-se para atender demandas de prote\xE7\xE3o como profissional verificado' : role === 'empresa' ? 'Gerencie sua equipe de vigilantes e receba demandas corporativas' : 'Cadastre-se com o c\xF3digo da sua empresa parceira para atuar vinculado a ela'), /*#__PURE__*/React.createElement("div", {
     className: "flex flex-col gap-3 mt-6"
   }, /*#__PURE__*/React.createElement(AngledButton, {
     tone: tone,
-    icon: role === 'cliente' ? Shield : Wrench,
+    icon: (role === 'cliente' || role === 'empresa') ? Shield : Wrench,
     onClick: () => setModal('cadastro')
   }, "CADASTRAR"), /*#__PURE__*/React.createElement(AngledButton, {
     variant: "ghost",
@@ -2963,26 +3187,38 @@ function App() {
   }, "LOGIN")), /*#__PURE__*/React.createElement("div", {
     className: "mt-6 pt-5 border-t border-slate-700/40"
   }, /*#__PURE__*/React.createElement("p", {
-    className: "text-center text-[11px] uppercase tracking-wider text-slate-500 mb-3"
-  }, "\xC9 uma empresa de seguran\xE7a?"), /*#__PURE__*/React.createElement("div", {
-    className: "flex justify-center gap-2"
-  }, /*#__PURE__*/React.createElement("button", {
+    className: "text-center text-[11px] text-emerald-300 font-semibold mb-2"
+  }, "Quer ser ou j\xE1 \xE9 uma Empresa parceira?"), /*#__PURE__*/React.createElement("div", {
+    className: "flex justify-center"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "relative flex bg-black/30 rounded-full p-1 w-64 h-11 border",
+    style: {
+      borderColor: 'rgba(6,95,70,0.45)'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full transition-all duration-300 ease-out",
+    style: {
+      backgroundImage: role === 'vinculado' ? 'linear-gradient(to bottom, #047857, #064e3b)' : 'linear-gradient(to bottom, #34d399, #059669)',
+      transform: role === 'vinculado' ? 'translateX(100%)' : 'translateX(0)',
+      opacity: (role === 'empresa' || role === 'vinculado') ? 1 : 0
+    }
+  }), /*#__PURE__*/React.createElement("button", {
     type: "button",
-    onClick: () => {
-      setRole('empresa');
-      setModal('cadastro');
-    },
-    className: "flex items-center gap-1.5 text-[11px] font-bold text-slate-900 bg-gradient-to-b from-emerald-300 to-emerald-600 border border-emerald-200/50 rounded-full px-3.5 py-2 active:translate-y-0.5 transition"
-  }, /*#__PURE__*/React.createElement(Shield, {
-    className: "w-3 h-3"
-  }), " Cadastrar empresa"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setRole('empresa'),
+    className: "relative z-10 flex-1 text-xs font-bold tracking-wide rounded-full transition-colors",
+    style: {
+      fontFamily: 'Orbitron, sans-serif',
+      color: role === 'empresa' ? '#0f172a' : 'rgba(167,243,208,0.5)'
+    }
+  }, "EMPRESA"), /*#__PURE__*/React.createElement("button", {
     type: "button",
-    onClick: () => {
-      setRole('empresa');
-      setModal('login');
-    },
-    className: "text-[11px] font-bold text-slate-300 bg-white/5 border border-slate-600/50 rounded-full px-3.5 py-2 hover:bg-white/10 transition"
-  }, "Entrar"))), /*#__PURE__*/React.createElement("div", {
+    onClick: () => setRole('vinculado'),
+    className: "relative z-10 flex-1 text-xs font-bold tracking-wide rounded-full transition-colors",
+    style: {
+      fontFamily: 'Orbitron, sans-serif',
+      color: role === 'vinculado' ? '#ffffff' : 'rgba(167,243,208,0.5)'
+    }
+  }, "VINCULADO")))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-center gap-2 mt-6 px-4 py-2 rounded-full bg-black/40 border border-slate-700/50 w-fit mx-auto"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-xs text-slate-400"
@@ -3005,6 +3241,9 @@ function App() {
   }), modal === 'cadastro' && role === 'empresa' && /*#__PURE__*/React.createElement(CadastroEmpresaModal, {
     onClose: () => setModal(null),
     onSuccess: () => showToast('Cadastro de empresa parceira enviado!')
+  }), modal === 'cadastro' && role === 'vinculado' && /*#__PURE__*/React.createElement(CadastroPrestadorVinculado, {
+    onClose: () => setModal(null),
+    onSuccess: (nomeEmpresa) => showToast(`Cadastro enviado! Aguardando aprovação de ${nomeEmpresa}.`)
   }), modal === 'login' && /*#__PURE__*/React.createElement(LoginModal, {
     tone: tone,
     role: role,
@@ -3013,7 +3252,7 @@ function App() {
       const userId = data && data.user ? data.user.id : null;
       setCurrentUserId(userId);
       setModal(null);
-      if (role === 'prestador') {
+      if (role === 'prestador' || role === 'vinculado') {
         if (userId) {
           try {
             const {

@@ -12,9 +12,13 @@ create extension if not exists "postgis"; -- para cálculos de distância/geoloc
 -- ============================================================
 -- 1. PERFIS (base para cliente e prestador)
 -- ============================================================
-create type user_role as enum ('client', 'provider', 'admin');
+do $$ begin
+    create type user_role as enum ('client', 'provider', 'admin');
+exception
+    when duplicate_object then null;
+end $$;
 
-create table profiles (
+create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   role user_role not null default 'client',
   full_name text not null,
@@ -28,7 +32,7 @@ create table profiles (
 -- ============================================================
 -- 2. PRESTADORES (dados extras + status online + localização)
 -- ============================================================
-create table providers (
+create table if not exists providers (
   id uuid primary key references profiles(id) on delete cascade,
   bio text,
   is_online boolean not null default false,
@@ -42,15 +46,18 @@ create table providers (
   created_at timestamptz not null default now()
 );
 
-create index idx_providers_location on providers using gist (current_location);
-create index idx_providers_online on providers (is_online, is_available);
+create index if not exists idx_providers_location on providers using gist (current_location);
+create index if not exists idx_providers_online on providers (is_online, is_available);
 
 -- ============================================================
 -- 3. CATEGORIAS DE SERVIÇO
 -- ============================================================
+drop table if exists provider_categories cascade;
+drop table if exists service_categories cascade;
+
 create table service_categories (
   id serial primary key,
-  name text not null,
+  name text not null unique,
   icon text,
   base_price numeric(10,2) default 0,
   active boolean default true
@@ -75,17 +82,26 @@ insert into service_categories (name, icon) values
 -- ============================================================
 -- 4. DEMANDAS (o coração do app)
 -- ============================================================
-create type request_type as enum ('immediate', 'scheduled');
-create type request_status as enum (
-  'pending',       -- aguardando prestador aceitar
-  'matched',       -- prestador aceitou
-  'in_progress',   -- serviço em andamento
-  'completed',     -- finalizado
-  'cancelled',      -- cancelado por qualquer parte
-  'expired'        -- ninguém aceitou a tempo
-);
+do $$ begin
+    create type request_type as enum ('immediate', 'scheduled');
+exception
+    when duplicate_object then null;
+end $$;
 
-create table service_requests (
+do $$ begin
+    create type request_status as enum (
+      'pending',       -- aguardando prestador aceitar
+      'matched',       -- prestador aceitou
+      'in_progress',   -- serviço em andamento
+      'completed',     -- finalizado
+      'cancelled',     -- cancelado por qualquer parte
+      'expired'        -- ninguém aceitou a tempo
+    );
+exception
+    when duplicate_object then null;
+end $$;
+
+create table if not exists service_requests (
   id uuid primary key default uuid_generate_v4(),
   client_id uuid not null references profiles(id),
   category_id integer not null references service_categories(id),
@@ -106,16 +122,20 @@ create table service_requests (
   cancel_reason text
 );
 
-create index idx_requests_status on service_requests (status);
-create index idx_requests_scheduled on service_requests (scheduled_at) where type = 'scheduled';
-create index idx_requests_location on service_requests using gist (location);
+create index if not exists idx_requests_status on service_requests (status);
+create index if not exists idx_requests_scheduled on service_requests (scheduled_at) where type = 'scheduled';
+create index if not exists idx_requests_location on service_requests using gist (location);
 
 -- ============================================================
 -- 5. OFERTAS DE DEMANDA (dispara para vários prestadores online)
 -- ============================================================
-create type offer_status as enum ('sent', 'accepted', 'rejected', 'expired');
+do $$ begin
+    create type offer_status as enum ('sent', 'accepted', 'rejected', 'expired');
+exception
+    when duplicate_object then null;
+end $$;
 
-create table request_offers (
+create table if not exists request_offers (
   id uuid primary key default uuid_generate_v4(),
   request_id uuid not null references service_requests(id) on delete cascade,
   provider_id uuid not null references providers(id),
@@ -125,22 +145,31 @@ create table request_offers (
   expires_at timestamptz not null default (now() + interval '30 seconds')
 );
 
-create index idx_offers_provider on request_offers (provider_id, status);
-create index idx_offers_request on request_offers (request_id);
+create index if not exists idx_offers_provider on request_offers (provider_id, status);
+create index if not exists idx_offers_request on request_offers (request_id);
 
 -- ============================================================
 -- 6. CARTEIRA / SAQUE
 -- ============================================================
-create table wallets (
+create table if not exists wallets (
   id uuid primary key references profiles(id) on delete cascade,
   balance numeric(12,2) not null default 0,
   updated_at timestamptz not null default now()
 );
 
-create type transaction_type as enum ('credit', 'debit', 'withdrawal', 'refund');
-create type transaction_status as enum ('pending', 'completed', 'failed');
+do $$ begin
+    create type transaction_type as enum ('credit', 'debit', 'withdrawal', 'refund');
+exception
+    when duplicate_object then null;
+end $$;
 
-create table wallet_transactions (
+do $$ begin
+    create type transaction_status as enum ('pending', 'completed', 'failed');
+exception
+    when duplicate_object then null;
+end $$;
+
+create table if not exists wallet_transactions (
   id uuid primary key default uuid_generate_v4(),
   wallet_id uuid not null references wallets(id),
   type transaction_type not null,
@@ -151,9 +180,13 @@ create table wallet_transactions (
   created_at timestamptz not null default now()
 );
 
-create type withdrawal_status as enum ('pending', 'processing', 'paid', 'failed');
+do $$ begin
+    create type withdrawal_status as enum ('pending', 'processing', 'paid', 'failed');
+exception
+    when duplicate_object then null;
+end $$;
 
-create table withdrawal_requests (
+create table if not exists withdrawal_requests (
   id uuid primary key default uuid_generate_v4(),
   provider_id uuid not null references providers(id),
   amount numeric(12,2) not null,
@@ -168,7 +201,7 @@ create table withdrawal_requests (
 -- ============================================================
 -- 7. AVALIAÇÕES
 -- ============================================================
-create table ratings (
+create table if not exists ratings (
   id uuid primary key default uuid_generate_v4(),
   request_id uuid not null references service_requests(id),
   client_id uuid not null references profiles(id),
@@ -181,7 +214,7 @@ create table ratings (
 -- ============================================================
 -- 8. NOTIFICAÇÕES
 -- ============================================================
-create table notifications (
+create table if not exists notifications (
   id uuid primary key default uuid_generate_v4(),
   profile_id uuid not null references profiles(id),
   title text not null,
@@ -194,7 +227,7 @@ create table notifications (
 -- ============================================================
 -- 9. CHAT DURANTE A DEMANDA (opcional, cliente <-> prestador)
 -- ============================================================
-create table chat_messages (
+create table if not exists chat_messages (
   id uuid primary key default uuid_generate_v4(),
   request_id uuid not null references service_requests(id) on delete cascade,
   sender_id uuid not null references profiles(id),
@@ -217,6 +250,7 @@ begin
 end;
 $$ language plpgsql;
 
+drop trigger if exists trg_update_rating on ratings;
 create trigger trg_update_rating
 after insert on ratings
 for each row execute function update_provider_rating();
@@ -230,12 +264,12 @@ alter table service_requests enable row level security;
 alter table wallets enable row level security;
 alter table wallet_transactions enable row level security;
 
--- Exemplo de política: cliente só vê/edita seu próprio perfil
+-- Políticas de segurança (Drop para evitar erro caso já existam)
+drop policy if exists "Usuários veem o próprio perfil" on profiles;
 create policy "Usuários veem o próprio perfil"
   on profiles for select using (auth.uid() = id);
 
+drop policy if exists "Cliente vê suas próprias demandas" on service_requests;
 create policy "Cliente vê suas próprias demandas"
   on service_requests for select
   using (auth.uid() = client_id or auth.uid() = provider_id);
-
--- (as demais policies seguem o mesmo padrão: auth.uid() = dono do dado)
