@@ -15,6 +15,16 @@
   html, body { height: 100%; overscroll-behavior: none; }
   body { position: fixed; inset: 0; overflow: hidden; }
   #root { height: 100%; margin: 0; padding: 0; background: #05070a; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  @keyframes floatShield { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-14px); } }
+  @keyframes floatOrb { 0%, 100% { transform: translateY(0px) scale(1); } 50% { transform: translateY(-8px) scale(1.04); } }
+  @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  .shimmer-gold {
+    background-image: linear-gradient(110deg, #FFD700 0%, #FFA500 25%, #FFEC8B 50%, #FFA500 75%, #FFD700 100%);
+    background-size: 200% 100%;
+    animation: shimmer 3s linear infinite;
+  }
+  .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; width: 0; height: 0; }
   #boot-loader {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
     background: #05070a; color: #7dd3fc; font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
@@ -3862,7 +3872,33 @@ function NovoLoginScreen({ role: activeRoleId, setRole, onLoginSuccess, onCadast
     }
   }))))));
 }
-ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App, null));
+class ErrorBoundaryGeral extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { temErro: false };
+  }
+  static getDerivedStateFromError() {
+    return { temErro: true };
+  }
+  componentDidCatch(erro, info) {
+    console.error('Erro capturado pela ErrorBoundaryGeral:', erro, info);
+  }
+  render() {
+    if (this.state.temErro) {
+      return /*#__PURE__*/React.createElement('div', {
+        style: { minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#080C10', color: '#fff', fontFamily: 'sans-serif', padding: 24, textAlign: 'center' }
+      },
+        /*#__PURE__*/React.createElement('div', { style: { fontSize: 15, marginBottom: 12 } }, 'Ocorreu um problema ao exibir a tela. Isso pode acontecer por causa de uma extensão do navegador (ex: tradutor automático).'),
+        /*#__PURE__*/React.createElement('button', {
+          onClick: () => window.location.reload(),
+          style: { padding: '10px 20px', borderRadius: 999, border: 'none', background: '#00D9FF', color: '#0A1628', fontWeight: 700, cursor: 'pointer' }
+        }, 'Recarregar página')
+      );
+    }
+    return this.props.children;
+  }
+}
+ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(ErrorBoundaryGeral, null, /*#__PURE__*/React.createElement(App, null)));
 
 
 
