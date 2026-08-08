@@ -15,8 +15,8 @@
   html, body { height: 100%; overscroll-behavior: none; }
   body { position: fixed; inset: 0; overflow: hidden; }
   #root { height: 100%; margin: 0; padding: 0; background: #05070a; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-  @keyframes floatShield { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-14px); } }
-  @keyframes floatOrb { 0%, 100% { transform: translateY(0px) scale(1); } 50% { transform: translateY(-8px) scale(1.04); } }
+  @keyframes floatShield { 0% { transform: translateY(0px); } 50% { transform: translateY(-12px); } 100% { transform: translateY(0px); } }
+  @keyframes floatOrb { 0% { transform: translateY(0px) scale(1); } 50% { transform: translateY(-7px) scale(1.03); } 100% { transform: translateY(0px) scale(1); } }
   @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
   .shimmer-gold {
     background-image: linear-gradient(110deg, #FFD700 0%, #FFA500 25%, #FFEC8B 50%, #FFA500 75%, #FFD700 100%);
@@ -3599,14 +3599,16 @@ function NovoLoginScreen({ role: activeRoleId, setRole, onLoginSuccess, onCadast
   }, /*#__PURE__*/React.createElement("div", {
     className: "relative w-[170px] h-[170px]",
     style: {
-      animation: 'floatShield 5s ease-in-out infinite'
+      animation: 'floatShield 6s cubic-bezier(0.45,0,0.55,1) infinite',
+      willChange: 'transform'
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "absolute inset-0 rounded-full",
     style: {
       background: `rgba(${role.rgb},0.16)`,
       filter: 'blur(32px)',
-      animation: 'floatOrb 6s ease-in-out infinite',
+      animation: 'floatOrb 6s cubic-bezier(0.45,0,0.55,1) infinite',
+      willChange: 'transform',
       transition: 'background 0.4s'
     }
   }), /*#__PURE__*/React.createElement("div", {
