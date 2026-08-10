@@ -1,0 +1,23 @@
+-- ============================================================
+-- FIX: Libera o valor 'negotiating' no status de service_requests
+-- ============================================================
+-- Só precisa rodar isso se der erro de "violates check constraint"
+-- ao tentar negociar (o app agora usa status='negotiating' pra travar
+-- a demanda contra outros prestadores enquanto o cliente decide).
+--
+-- Se sua tabela NÃO tiver CHECK constraint em status (campo texto livre),
+-- pode ignorar esse arquivo - não precisa rodar nada.
+-- ============================================================
+
+-- 1) Descubra o nome real da constraint (se existir):
+-- SELECT conname, pg_get_constraintdef(oid)
+-- FROM pg_constraint
+-- WHERE conrelid = 'service_requests'::regclass AND contype = 'c';
+
+-- 2) Se encontrar uma constraint tipo "service_requests_status_check",
+--    substitua o nome abaixo e rode (ajuste a lista de valores conforme
+--    os que já existem na sua tabela + 'negotiating'):
+--
+-- ALTER TABLE service_requests DROP CONSTRAINT service_requests_status_check;
+-- ALTER TABLE service_requests ADD CONSTRAINT service_requests_status_check
+--   CHECK (status IN ('pending', 'matched', 'expired', 'cancelled', 'completed', 'negotiating'));
