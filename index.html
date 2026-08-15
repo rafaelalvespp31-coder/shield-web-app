@@ -3504,6 +3504,7 @@ function NovoLoginScreen({ role: activeRoleId, setRole, onLoginSuccess, onCadast
   const role = ROLES.find(r => r.id === activeRoleId);
   const [erroLogin, setErroLogin] = useState('');
   const [loadingLogin, setLoadingLogin] = useState(false);
+  const [showEsqueciSenha, setShowEsqueciSenha] = useState(false);
   const handleLogin = async e => {
     e.preventDefault();
     setErroLogin('');
@@ -3520,7 +3521,7 @@ function NovoLoginScreen({ role: activeRoleId, setRole, onLoginSuccess, onCadast
       setLoadingLogin(false);
     }
   };
-  return /*#__PURE__*/React.createElement("div", {
+  return /*#__PURE__*/React.createElement(React.Fragment, null, React.createElement("div", {
     className: "min-h-screen w-full flex flex-col lg:flex-row lg:h-screen lg:overflow-hidden bg-[#080C10] text-white",
     style: {
       transition: 'background 0.4s'
@@ -3896,7 +3897,7 @@ function NovoLoginScreen({ role: activeRoleId, setRole, onLoginSuccess, onCadast
       color: role.main,
       transition: 'color 0.3s'
     },
-    onClick: e => e.preventDefault()
+    onClick: e => { e.preventDefault(); setShowEsqueciSenha(true); }
   }, "Esqueci senha")), erroLogin && /*#__PURE__*/React.createElement("p", { className: "text-red-400 text-xs" }, erroLogin), /*#__PURE__*/React.createElement("button", {
     type: "submit",
     disabled: loadingLogin,
@@ -3949,7 +3950,7 @@ function NovoLoginScreen({ role: activeRoleId, setRole, onLoginSuccess, onCadast
       color: '#34D399',
       marginLeft: 2
     }
-  }))))));
+  })))))), showEsqueciSenha && /*#__PURE__*/React.createElement(EsqueciSenhaModal, { emailInicial: email, role: role, showToast: showToast, onFechar: () => setShowEsqueciSenha(false) }));
 }
 class ErrorBoundaryGeral extends React.Component {
   constructor(props) {
@@ -4454,6 +4455,197 @@ if (new URLSearchParams(window.location.search).get('admin') === '1') {
 
 
 
+function EsqueciSenhaModal({
+  emailInicial,
+  role,
+  onFechar,
+  showToast
+}) {
+  const [email, setEmail] = useState(emailInicial || '');
+  const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState(false);
+  const [erro, setErro] = useState('');
+  const enviar = async () => {
+    setErro('');
+    if (!email || email.trim().length < 3 || !email.includes('@')) {
+      setErro('Informe um e-mail válido.');
+      return;
+    }
+    setEnviando(true);
+    try {
+      const {
+        error
+      } = await sb.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: window.location.origin + window.location.pathname
+      });
+      if (error) throw error;
+      setEnviado(true);
+    } catch (err) {
+      setErro(err && err.message || 'Não foi possível enviar o e-mail. Tente novamente.');
+    } finally {
+      setEnviando(false);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 z-[400] flex items-center justify-center px-4 bg-black/75 backdrop-blur-sm",
+    onClick: onFechar
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "w-full sm:w-[380px] rounded-[20px] overflow-hidden",
+    style: {
+      background: '#0F141A',
+      border: '1px solid rgba(255,255,255,0.12)'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "px-5 py-4 border-b border-white/10 flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-[14px] font-black text-white"
+  }, "Recuperar senha"), /*#__PURE__*/React.createElement("button", {
+    onClick: onFechar,
+    className: "w-7 h-7 rounded-full bg-white/5 flex items-center justify-center text-white/50"
+  }, "✕")), /*#__PURE__*/React.createElement("div", {
+    className: "p-5"
+  }, enviado ? /*#__PURE__*/React.createElement("div", {
+    className: "text-center py-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center",
+    style: {
+      background: role.main + '22'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: role.main,
+      fontSize: 22
+    }
+  }, "✓")), /*#__PURE__*/React.createElement("p", {
+    className: "text-[13px] text-white font-semibold mb-1.5"
+  }, "E-mail enviado!"), /*#__PURE__*/React.createElement("p", {
+    className: "text-[12px] text-white/60 leading-relaxed"
+  }, "Confira sua caixa de entrada (e o spam) em ", /*#__PURE__*/React.createElement("span", {
+    className: "text-white"
+  }, email), " e clique no link pra criar uma nova senha."), /*#__PURE__*/React.createElement("button", {
+    onClick: onFechar,
+    className: "mt-5 w-full h-[42px] rounded-xl font-bold text-[12.5px]",
+    style: {
+      background: role.main,
+      color: role.buttonText
+    }
+  }, "Entendi")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    className: "text-[12px] text-white/60 mb-4"
+  }, "Informe o e-mail da sua conta - vamos te mandar um link pra criar uma nova senha."), /*#__PURE__*/React.createElement("label", {
+    className: "text-[11px] font-semibold text-white/50 tracking-wide"
+  }, "E-MAIL"), /*#__PURE__*/React.createElement("input", {
+    type: "email",
+    value: email,
+    onChange: e => setEmail(e.target.value),
+    onKeyDown: e => {
+      if (e.key === 'Enter') enviar();
+    },
+    className: "w-full h-[44px] mt-1.5 mb-3 px-3.5 rounded-xl bg-white/5 border border-white/15 text-[13px] text-white outline-none",
+    style: {
+      borderColor: undefined
+    }
+  }), erro && /*#__PURE__*/React.createElement("p", {
+    className: "text-red-400 text-[11.5px] mb-3"
+  }, erro), /*#__PURE__*/React.createElement("button", {
+    disabled: enviando,
+    onClick: enviar,
+    className: "w-full h-[44px] rounded-xl font-bold text-[12.5px] disabled:opacity-60",
+    style: {
+      background: role.main,
+      color: role.buttonText
+    }
+  }, enviando ? 'Enviando...' : 'Enviar link de recuperação')))));
+}
+function RedefinirSenhaScreen({
+  onConcluido
+}) {
+  const [novaSenha, setNovaSenha] = useState('');
+  const [confirmaSenha, setConfirmaSenha] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [sucesso, setSucesso] = useState(false);
+  const salvar = async () => {
+    setErro('');
+    if (!novaSenha || novaSenha.length < 6) {
+      setErro('A senha precisa ter pelo menos 6 caracteres.');
+      return;
+    }
+    if (novaSenha !== confirmaSenha) {
+      setErro('As senhas não coincidem.');
+      return;
+    }
+    setSalvando(true);
+    try {
+      const {
+        error
+      } = await sb.auth.updateUser({
+        password: novaSenha
+      });
+      if (error) throw error;
+      setSucesso(true);
+      await sb.auth.signOut();
+      setTimeout(() => {
+        // Recarrega a página inteira (em vez de só trocar de estado) -
+        // assim evita qualquer risco de ordem de hooks do React ao
+        // sair da tela de redefinição e voltar pro app normal.
+        window.location.href = window.location.origin + window.location.pathname;
+      }, 2200);
+    } catch (err) {
+      setErro(err && err.message || 'Não foi possível salvar a nova senha.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "min-h-screen w-full flex items-center justify-center bg-[#080C10] text-white px-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-full max-w-[380px] rounded-[20px] p-7",
+    style: {
+      background: '#0F141A',
+      border: '1px solid rgba(255,255,255,0.12)'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-11 h-11 rounded-xl mb-4 flex items-center justify-center",
+    style: {
+      background: '#00D9FF22'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: '#00D9FF',
+      fontSize: 20
+    }
+  }, "🔒")), /*#__PURE__*/React.createElement("h1", {
+    className: "text-[19px] font-black mb-1.5"
+  }, "Criar nova senha"), sucesso ? /*#__PURE__*/React.createElement("p", {
+    className: "text-[13px] text-emerald-300 mt-3"
+  }, "Senha alterada com sucesso! Redirecionando pro login...") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    className: "text-[12.5px] text-white/60 mb-5"
+  }, "Escolha uma nova senha pra sua conta ShielD."), /*#__PURE__*/React.createElement("label", {
+    className: "text-[11px] font-semibold text-white/50 tracking-wide"
+  }, "NOVA SENHA"), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    value: novaSenha,
+    onChange: e => setNovaSenha(e.target.value),
+    className: "w-full h-[44px] mt-1.5 mb-3 px-3.5 rounded-xl bg-white/5 border border-white/15 text-[13px] text-white outline-none"
+  }), /*#__PURE__*/React.createElement("label", {
+    className: "text-[11px] font-semibold text-white/50 tracking-wide"
+  }, "CONFIRMAR SENHA"), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    value: confirmaSenha,
+    onChange: e => setConfirmaSenha(e.target.value),
+    onKeyDown: e => {
+      if (e.key === 'Enter') salvar();
+    },
+    className: "w-full h-[44px] mt-1.5 mb-3 px-3.5 rounded-xl bg-white/5 border border-white/15 text-[13px] text-white outline-none"
+  }), erro && /*#__PURE__*/React.createElement("p", {
+    className: "text-red-400 text-[11.5px] mb-3"
+  }, erro), /*#__PURE__*/React.createElement("button", {
+    disabled: salvando,
+    onClick: salvar,
+    className: "w-full h-[46px] rounded-xl font-bold text-[12.5px] bg-gradient-to-r from-[#00D9FF] to-[#00B4E6] text-[#0A1628] disabled:opacity-60"
+  }, salvando ? 'Salvando...' : 'Salvar nova senha'))));
+}
 function App() {
   const [role, setRole] = useState('cliente');
   const [modal, setModal] = useState(null);
@@ -4461,10 +4653,22 @@ function App() {
   const [toast, setToast] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [companyId, setCompanyId] = useState(null);
+  // Detecta o link de recuperação de senha (clicado no e-mail) - fica
+  // fixo assim durante toda a vida desse componente (nunca volta pro
+  // app normal sem recarregar a página, evitando qualquer problema de
+  // ordem de hooks do React).
+  const [modoRedefinirSenha] = useState(
+    typeof window !== 'undefined' && window.location.hash.includes('type=recovery')
+  );
   const [vinculoInfo, setVinculoInfo] = useState({
     empresaNome: null,
     statusAprovacao: null
   });
+  if (modoRedefinirSenha) {
+    return /*#__PURE__*/React.createElement(RedefinirSenhaScreen, {
+      onConcluido: () => {}
+    });
+  }
   const tone = role === 'cliente' ? 'teal' : (role === 'empresa' || role === 'vinculado') ? 'empresa' : 'gold';
   const handleLoginSuccess = async data => {
       const userId = data && data.user ? data.user.id : null;
