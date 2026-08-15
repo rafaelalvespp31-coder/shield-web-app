@@ -2229,6 +2229,31 @@ function CadastroPrestadorModal({
     [k]: e.target.value
   }));
   const toggleCategoria = cat => setCategorias(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
+
+  // ------------------------------------------------------------
+  // DOCUMENTOS DE CADASTRO (antecedentes criminais + foto com RG)
+  // Sobem para um bucket PRIVADO no Supabase Storage (provider-documents),
+  // um por prestador, em provider-documents/{userId}/{tipo}.{ext}.
+  // Nunca geramos URL pública aqui — o acesso é controlado por RLS
+  // (só o próprio prestador enxerga os próprios arquivos) e, quando
+  // precisar exibir o documento na tela, gera-se uma signed URL sob
+  // demanda (ver função útil obterUrlDocumentoPrestador mais abaixo
+  // no arquivo, usada pelo próprio dashboard do prestador).
+  // ------------------------------------------------------------
+  const enviarDocumentoCadastro = async (userId, tipo, file) => {
+    if (!file) return { path: null, erro: null };
+    try {
+      const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
+      const path = userId + '/' + tipo + '.' + ext;
+      const { error: upErr } = await sb.storage.from('provider-documents').upload(path, file, { upsert: true, contentType: file.type || 'application/octet-stream' });
+      if (upErr) throw upErr;
+      return { path, erro: null };
+    } catch (e) {
+      console.warn('Falha ao enviar documento de cadastro (' + tipo + '):', e.message);
+      return { path: null, erro: e.message || 'Erro desconhecido' };
+    }
+  };
+
   const validateStep = () => {
     const e = {};
     if (step === 0) {
@@ -2290,6 +2315,22 @@ function CadastroPrestadorModal({
           documents_status: 'pending'
         });
         if (providerError) throw providerError;
+
+        // Envia os documentos de verificação (antecedentes criminais e
+        // foto segurando o RG) para o bucket privado 'provider-documents'.
+        // Não bloqueia o cadastro se falhar — a conta já foi criada; o
+        // prestador fica com documents_status 'pending' e pode reenviar
+        // depois (o reenvio ainda entra em uma fase futura da tela do
+        // prestador; por enquanto isso é resolvido manualmente se precisar).
+        const [resultadoAntecedentes, resultadoFotoRg] = await Promise.all([enviarDocumentoCadastro(data.user.id, 'antecedentes', antecedentes), enviarDocumentoCadastro(data.user.id, 'foto_rg', fotoRg)]);
+        const {
+          error: docsError
+        } = await sb.from('usuarios_prestadores').update({
+          antecedentes_document_path: resultadoAntecedentes.path,
+          rg_document_path: resultadoFotoRg.path,
+          documents_status: resultadoAntecedentes.path && resultadoFotoRg.path ? 'em_analise' : 'pending'
+        }).eq('id', data.user.id);
+        if (docsError) console.warn('Falha ao registrar caminho dos documentos:', docsError.message);
         if (categorias.length) {
           const {
             data: cats,
@@ -2327,8 +2368,6 @@ function CadastroPrestadorModal({
             setAvisoVinculo(resultadoVinculo && motivos[resultadoVinculo.reason] || 'Não foi possível validar o código de convite — seu cadastro foi criado como autônomo. Você pode tentar novamente depois.');
           }
         }
-        // Observação: envio dos documentos (antecedentes / foto com RG) para o Supabase Storage
-        // ainda não está implementado nesta fase (entra na Fase 5).
       }
       setStep(4.5);
     } catch (err) {
@@ -4231,52 +4270,7 @@ function AdminPainelSaques() {
     return m ? m[1].trim() : descricao || '-';
   };
   const listaAtual = abaAtiva === 'pendentes' ? pendentes : pagos;
-  return /*#__PURE__*/React.createElement("div", {
-    style: {
-      minHeight: '100vh',
-      background: '#0A0F14',
-      padding: '32px 20px'
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      maxWidth: 820,
-      margin: '0 auto'
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: 24
-    }
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
-    style: {
-      color: '#fff',
-      fontSize: 22,
-      fontWeight: 900,
-      margin: 0
-    }
-  }, "Saques - Painel de Administrador"), /*#__PURE__*/React.createElement("p", {
-    style: {
-      color: '#8A97A3',
-      fontSize: 12.5,
-      margin: 0,
-      marginTop: 4
-    }
-  }, "Processe manualmente o Pix e marque como pago.")), /*#__PURE__*/React.createElement("button", {
-    onClick: () => sb.auth.signOut().then(() => window.location.reload()),
-    style: {
-      height: 38,
-      padding: '0 16px',
-      borderRadius: 999,
-      background: 'transparent',
-      border: '1px solid rgba(255,255,255,0.15)',
-      color: '#8A97A3',
-      fontSize: 12,
-      fontWeight: 700,
-      cursor: 'pointer'
-    }
-  }, "Sair")), /*#__PURE__*/React.createElement("div", {
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       gap: 8,
@@ -4403,8 +4397,373 @@ function AdminPainelSaques() {
       color: '#10B981',
       fontWeight: 700
     }
-  }, "✓ Pago")))))));
+  }, "✓ Pago"))))));
 }
+function fmtDataHoraAdmin(iso) {
+  if (!iso) return '-';
+  try {
+    return new Date(iso).toLocaleString('pt-BR');
+  } catch (e) {
+    return '-';
+  }
+}
+
+// ------------------------------------------------------------
+// ABA "CADASTROS" DO PAINEL ADMIN - revisão dos documentos que o
+// prestador (autônomo ou vinculado) envia no cadastro: atestado de
+// antecedentes criminais e foto segurando o RG. Os arquivos ficam
+// num bucket PRIVADO (provider-documents), então a visualização
+// aqui usa signed URL (gerada na hora, expira em 1h) em vez de link
+// direto - ninguém enxerga esses documentos sem passar por aqui.
+// ------------------------------------------------------------
+function AdminPainelCadastros() {
+  const [lista, setLista] = useState([]);
+  const [carregado, setCarregado] = useState(false);
+  const [abaAtiva, setAbaAtiva] = useState('pendentes');
+  const [processando, setProcessando] = useState(null);
+  const [motivoRejeicao, setMotivoRejeicao] = useState({}); // id -> texto
+  const [abrindoDoc, setAbrindoDoc] = useState(null); // path sendo aberto agora
+
+  const buscar = async () => {
+    try {
+      const statusAlvo = abaAtiva === 'pendentes' ? ['pending', 'em_analise'] : ['aprovado', 'rejeitado'];
+      const [{
+        data: prestadores,
+        error: errPrestadores
+      }, {
+        data: empresas,
+        error: errEmpresas
+      }] = await Promise.all([sb.from('usuarios_prestadores').select('id, bio, tipo_prestador, documents_status, documents_rejection_reason, antecedentes_document_path, rg_document_path, profiles(full_name, phone, cpf_cnpj)').in('documents_status', statusAlvo), sb.from('empresas_parceiras').select('id, razao_social, cnpj, telefone, documents_status, documents_rejection_reason, autorizacao_pf_document_path').in('documents_status', statusAlvo)]);
+      if (errPrestadores) throw errPrestadores;
+      if (errEmpresas) throw errEmpresas;
+      const listaPrestadores = (prestadores || []).map(p => ({
+        tipo: 'prestador',
+        id: p.id,
+        nome: p.profiles ? p.profiles.full_name : 'Sem nome',
+        telefone: p.profiles ? p.profiles.phone : '-',
+        cpfCnpj: p.profiles ? p.profiles.cpf_cnpj : '-',
+        subtitulo: p.tipo_prestador === 'vinculado' ? 'Vinculado (empresa)' : 'Autônomo',
+        bio: p.bio,
+        documents_status: p.documents_status,
+        documents_rejection_reason: p.documents_rejection_reason,
+        docs: [{
+          label: 'antecedentes criminais',
+          path: p.antecedentes_document_path
+        }, {
+          label: 'foto com RG',
+          path: p.rg_document_path
+        }]
+      }));
+      const listaEmpresas = (empresas || []).map(e => ({
+        tipo: 'empresa',
+        id: e.id,
+        nome: e.razao_social,
+        telefone: e.telefone,
+        cpfCnpj: e.cnpj,
+        subtitulo: 'Empresa Parceira',
+        bio: null,
+        documents_status: e.documents_status,
+        documents_rejection_reason: e.documents_rejection_reason,
+        docs: [{
+          label: 'autorização de funcionamento (PF)',
+          path: e.autorizacao_pf_document_path
+        }]
+      }));
+      setLista([...listaPrestadores, ...listaEmpresas]);
+    } catch (e) {
+      console.warn('Falha ao buscar cadastros para revisão:', e.message);
+    }
+    setCarregado(true);
+  };
+
+  useEffect(() => {
+    setCarregado(false);
+    buscar();
+    const canal = sb.channel('admin-cadastros').on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'usuarios_prestadores'
+    }, () => buscar()).on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'empresas_parceiras'
+    }, () => buscar()).subscribe();
+    return () => {
+      sb.removeChannel(canal);
+    };
+  }, [abaAtiva]);
+
+  const abrirDocumento = async (path, tipo) => {
+    if (!path) return;
+    setAbrindoDoc(path);
+    try {
+      const bucket = tipo === 'empresa' ? 'company-documents' : 'provider-documents';
+      const {
+        data,
+        error
+      } = await sb.storage.from(bucket).createSignedUrl(path, 3600);
+      if (error) throw error;
+      window.open(data.signedUrl, '_blank');
+    } catch (e) {
+      alert('Não foi possível abrir o documento: ' + e.message);
+    } finally {
+      setAbrindoDoc(null);
+    }
+  };
+
+  const aprovar = async item => {
+    setProcessando(item.id);
+    try {
+      const tabela = item.tipo === 'empresa' ? 'empresas_parceiras' : 'usuarios_prestadores';
+      const campos = item.tipo === 'empresa' ? {
+        documents_status: 'aprovado',
+        verified: true,
+        documents_rejection_reason: null
+      } : {
+        documents_status: 'aprovado',
+        verificado: true,
+        documents_rejection_reason: null
+      };
+      const {
+        error
+      } = await sb.from(tabela).update(campos).eq('id', item.id);
+      if (error) throw error;
+      buscar();
+    } catch (e) {
+      alert('Não foi possível aprovar: ' + e.message);
+    } finally {
+      setProcessando(null);
+    }
+  };
+
+  const rejeitar = async item => {
+    setProcessando(item.id);
+    try {
+      const tabela = item.tipo === 'empresa' ? 'empresas_parceiras' : 'usuarios_prestadores';
+      const campos = item.tipo === 'empresa' ? {
+        documents_status: 'rejeitado',
+        verified: false,
+        documents_rejection_reason: (motivoRejeicao[item.id] || '').trim() || null
+      } : {
+        documents_status: 'rejeitado',
+        verificado: false,
+        documents_rejection_reason: (motivoRejeicao[item.id] || '').trim() || null
+      };
+      const {
+        error
+      } = await sb.from(tabela).update(campos).eq('id', item.id);
+      if (error) throw error;
+      buscar();
+    } catch (e) {
+      alert('Não foi possível rejeitar: ' + e.message);
+    } finally {
+      setProcessando(null);
+    }
+  };
+
+  const rotuloStatus = {
+    pending: 'Pendente (docs não enviados)',
+    em_analise: 'Em análise',
+    aprovado: 'Aprovado',
+    rejeitado: 'Rejeitado'
+  };
+
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8,
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setAbaAtiva('pendentes'),
+    style: {
+      height: 38,
+      padding: '0 18px',
+      borderRadius: 999,
+      border: 'none',
+      cursor: 'pointer',
+      fontSize: 12.5,
+      fontWeight: 700,
+      background: abaAtiva === 'pendentes' ? '#F59E0B' : '#121A22',
+      color: abaAtiva === 'pendentes' ? '#0A0F14' : '#8A97A3'
+    }
+  }, "Pendentes"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setAbaAtiva('revisados'),
+    style: {
+      height: 38,
+      padding: '0 18px',
+      borderRadius: 999,
+      border: 'none',
+      cursor: 'pointer',
+      fontSize: 12.5,
+      fontWeight: 700,
+      background: abaAtiva === 'revisados' ? '#F59E0B' : '#121A22',
+      color: abaAtiva === 'revisados' ? '#0A0F14' : '#8A97A3'
+    }
+  }, "Já revisados")), !carregado ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#8A97A3',
+      fontSize: 13,
+      textAlign: 'center',
+      padding: 40
+    }
+  }, "Carregando...") : lista.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#8A97A3',
+      fontSize: 13,
+      textAlign: 'center',
+      padding: 40,
+      border: '1px dashed rgba(255,255,255,0.1)',
+      borderRadius: 16
+    }
+  }, abaAtiva === 'pendentes' ? 'Nenhum cadastro pendente de revisão.' : 'Nenhum cadastro revisado ainda.') : /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 12
+    }
+  }, lista.map(p => /*#__PURE__*/React.createElement("div", {
+    key: p.tipo + '-' + p.id,
+    style: {
+      background: '#121A22',
+      border: '1px solid rgba(255,255,255,0.08)',
+      borderRadius: 14,
+      padding: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#fff',
+      fontSize: 14,
+      fontWeight: 800
+    }
+  }, p.nome || 'Sem nome'), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#8A97A3',
+      fontSize: 11.5,
+      marginTop: 2
+    }
+  }, "Tel: ", p.telefone || '-', " · CPF/CNPJ: ", p.cpfCnpj || '-'), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#5B6572',
+      fontSize: 11,
+      marginTop: 2
+    }
+  }, "Tipo: ", p.subtitulo)), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      padding: '4px 10px',
+      borderRadius: 999,
+      background: p.documents_status === 'aprovado' ? 'rgba(16,185,129,0.15)' : p.documents_status === 'rejeitado' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)',
+      color: p.documents_status === 'aprovado' ? '#10B981' : p.documents_status === 'rejeitado' ? '#EF4444' : '#F59E0B',
+      whiteSpace: 'nowrap'
+    }
+  }, rotuloStatus[p.documents_status] || p.documents_status)), p.bio && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#8A97A3',
+      fontSize: 12,
+      marginBottom: 10,
+      lineHeight: 1.5
+    }
+  }, p.bio), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8,
+      flexWrap: 'wrap',
+      marginBottom: 10
+    }
+  }, p.docs.map((doc, i) => /*#__PURE__*/React.createElement("button", {
+    key: i,
+    disabled: !doc.path || abrindoDoc === doc.path,
+    onClick: () => abrirDocumento(doc.path, p.tipo),
+    style: {
+      height: 34,
+      padding: '0 14px',
+      borderRadius: 10,
+      background: doc.path ? '#1A2530' : '#161C24',
+      color: doc.path ? '#D1D5DB' : '#5B6572',
+      fontSize: 11.5,
+      fontWeight: 700,
+      border: '1px solid rgba(255,255,255,0.08)',
+      cursor: doc.path ? 'pointer' : 'not-allowed'
+    }
+  }, doc.path ? abrindoDoc === doc.path ? 'Abrindo...' : 'Ver ' + doc.label : doc.label.charAt(0).toUpperCase() + doc.label.slice(1) + ' não enviado(a)'))), p.documents_status === 'rejeitado' && p.documents_rejection_reason && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#EF4444',
+      fontSize: 11.5,
+      marginBottom: 10,
+      background: 'rgba(239,68,68,0.08)',
+      borderRadius: 8,
+      padding: 8
+    }
+  }, "Motivo da rejeição: ", p.documents_rejection_reason), abaAtiva === 'pendentes' && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8,
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      borderTop: '1px solid rgba(255,255,255,0.06)',
+      paddingTop: 10
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    placeholder: "Motivo da rejeição (opcional)",
+    value: motivoRejeicao[p.id] || '',
+    onChange: e => setMotivoRejeicao(prev => ({
+      ...prev,
+      [p.id]: e.target.value
+    })),
+    style: {
+      flex: '1 1 220px',
+      height: 34,
+      borderRadius: 10,
+      background: '#0A0F14',
+      border: '1px solid rgba(255,255,255,0.1)',
+      color: '#fff',
+      fontSize: 11.5,
+      padding: '0 10px'
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    disabled: processando === p.id,
+    onClick: () => rejeitar(p),
+    style: {
+      height: 34,
+      padding: '0 14px',
+      borderRadius: 10,
+      background: 'transparent',
+      color: '#EF4444',
+      fontSize: 11.5,
+      fontWeight: 700,
+      border: '1px solid rgba(239,68,68,0.4)',
+      cursor: 'pointer',
+      opacity: processando === p.id ? 0.5 : 1
+    }
+  }, "Rejeitar"), /*#__PURE__*/React.createElement("button", {
+    disabled: processando === p.id,
+    onClick: () => aprovar(p),
+    style: {
+      height: 34,
+      padding: '0 16px',
+      borderRadius: 10,
+      background: '#10B981',
+      color: '#06231A',
+      fontSize: 11.5,
+      fontWeight: 800,
+      border: 'none',
+      cursor: 'pointer',
+      opacity: processando === p.id ? 0.5 : 1
+    }
+  }, processando === p.id ? 'Salvando...' : 'Aprovar'))))));
+}
+
 function AdminApp() {
   const [sessaoOk, setSessaoOk] = useState(null); // null = verificando, false = precisa logar, true = logado e autorizado
 
@@ -4442,8 +4801,88 @@ function AdminApp() {
       onLoginOk: () => setSessaoOk(true)
     });
   }
-  return /*#__PURE__*/React.createElement(AdminPainelSaques, null);
+  return /*#__PURE__*/React.createElement(AdminShell, null);
 }
+
+// Shell com abas do painel admin: Saques | Cadastros. Cada aba
+// renderiza seu próprio componente já existente/novo por baixo.
+function AdminShell() {
+  const [abaTopo, setAbaTopo] = useState('saques');
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      minHeight: '100vh',
+      background: '#0A0F14',
+      padding: '32px 20px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 820,
+      margin: '0 auto'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("h1", {
+    style: {
+      color: '#fff',
+      fontSize: 22,
+      fontWeight: 900,
+      margin: 0
+    }
+  }, "Painel de Administrador"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => sb.auth.signOut().then(() => window.location.reload()),
+    style: {
+      height: 38,
+      padding: '0 16px',
+      borderRadius: 999,
+      background: 'transparent',
+      border: '1px solid rgba(255,255,255,0.15)',
+      color: '#8A97A3',
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: 'pointer'
+    }
+  }, "Sair")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8,
+      marginBottom: 24,
+      borderBottom: '1px solid rgba(255,255,255,0.08)',
+      paddingBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setAbaTopo('saques'),
+    style: {
+      height: 40,
+      padding: '0 20px',
+      borderRadius: 10,
+      border: 'none',
+      cursor: 'pointer',
+      fontSize: 13,
+      fontWeight: 800,
+      background: abaTopo === 'saques' ? '#F59E0B' : '#121A22',
+      color: abaTopo === 'saques' ? '#0A0F14' : '#8A97A3'
+    }
+  }, "Saques"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setAbaTopo('cadastros'),
+    style: {
+      height: 40,
+      padding: '0 20px',
+      borderRadius: 10,
+      border: 'none',
+      cursor: 'pointer',
+      fontSize: 13,
+      fontWeight: 800,
+      background: abaTopo === 'cadastros' ? '#F59E0B' : '#121A22',
+      color: abaTopo === 'cadastros' ? '#0A0F14' : '#8A97A3'
+    }
+  }, "Cadastros")), abaTopo === 'saques' ? /*#__PURE__*/React.createElement(AdminPainelSaques, null) : /*#__PURE__*/React.createElement(AdminPainelCadastros, null)));
+}
+
 // Painel de administrador (acesso restrito) - rota separada via
 // ?admin=1 na URL, nunca aparece no fluxo normal do app.
 if (new URLSearchParams(window.location.search).get('admin') === '1') {
