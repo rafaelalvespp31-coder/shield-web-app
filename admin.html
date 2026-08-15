@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShielD — Administrador</title>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background: #0A0F14; color: #fff; min-height: 100vh; }
+  .hidden { display: none !important; }
+
+  /* LOGIN */
+  #loginScreen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .loginBox { width: 100%; max-width: 380px; background: #121A22; border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 32px; }
+  .logo { width: 44px; height: 44px; border-radius: 12px; background: #F59E0B; display: flex; align-items: center; justify-content: center; margin-bottom: 18px; font-weight: 900; color: #0A0F14; font-size: 18px; }
+  .loginBox h1 { font-size: 20px; font-weight: 900; margin-bottom: 4px; }
+  .loginBox p.sub { color: #8A97A3; font-size: 12.5px; margin-bottom: 24px; }
+  label { color: #8A97A3; font-size: 11px; font-weight: 600; display: block; margin-bottom: 6px; }
+  input { width: 100%; height: 42px; padding: 0 12px; border-radius: 10px; background: #0A0F14; border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px; outline: none; margin-bottom: 14px; }
+  input:focus { border-color: rgba(245,158,11,0.5); }
+  .errMsg { color: #F87171; font-size: 12px; margin-bottom: 14px; }
+  button.primary { width: 100%; height: 44px; border-radius: 999px; background: #F59E0B; color: #0A0F14; font-weight: 800; font-size: 13px; border: none; cursor: pointer; }
+  button.primary:disabled { opacity: 0.6; cursor: default; }
+
+  /* PAINEL */
+  #painel { min-height: 100vh; padding: 28px 18px 60px; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  .topRow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; flex-wrap: wrap; gap: 12px; }
+  .topRow h1 { font-size: 21px; font-weight: 900; }
+  .topRow p { color: #8A97A3; font-size: 12px; margin-top: 3px; }
+  #sairBtn { height: 36px; padding: 0 16px; border-radius: 999px; background: transparent; border: 1px solid rgba(255,255,255,0.15); color: #8A97A3; font-size: 12px; font-weight: 700; cursor: pointer; }
+
+  .tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  .tabBtn { height: 38px; padding: 0 16px; border-radius: 999px; border: none; cursor: pointer; font-size: 12.5px; font-weight: 700; background: #121A22; color: #8A97A3; }
+  .tabBtn.active { background: #F59E0B; color: #0A0F14; }
+
+  .card { background: #121A22; border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 16px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .card .info { min-width: 200px; }
+  .card .nome { font-size: 13.5px; font-weight: 700; }
+  .card .detalhe { color: #8A97A3; font-size: 11.5px; margin-top: 2px; }
+  .card .data { color: #5B6572; font-size: 10.5px; margin-top: 2px; }
+  .card .direita { display: flex; align-items: center; gap: 14px; }
+  .valor { color: #F59E0B; font-size: 17px; font-weight: 900; }
+  .valorVerde { color: #10B981; }
+  button.acao { height: 38px; padding: 0 16px; border-radius: 10px; background: #10B981; color: #06231A; font-weight: 800; font-size: 12px; border: none; cursor: pointer; white-space: nowrap; }
+  button.acao:disabled { opacity: 0.5; cursor: default; }
+  .pagoTag { font-size: 11px; color: #10B981; font-weight: 700; }
+  .badge { font-size: 10px; padding: 3px 9px; border-radius: 999px; font-weight: 700; }
+  .badge.ouro { background: rgba(245,158,11,0.15); color: #F59E0B; }
+  .badge.prata { background: rgba(203,213,225,0.15); color: #CBD5E1; }
+  .badge.bronze { background: rgba(180,83,9,0.15); color: #C2703D; }
+  .badge.online { background: rgba(16,185,129,0.15); color: #10B981; }
+  .badge.offline { background: rgba(148,163,184,0.15); color: #94A3B8; }
+
+  .empty { color: #8A97A3; font-size: 13px; text-align: center; padding: 40px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 16px; }
+  .loading { color: #8A97A3; font-size: 13px; text-align: center; padding: 40px; }
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="loginBox">
+    <div class="logo">A</div>
+    <h1>Painel de Administrador</h1>
+    <p class="sub">Acesso restrito — gerenciamento ShielD.</p>
+    <label>E-MAIL</label>
+    <input id="loginEmail" type="email" autocomplete="username">
+    <label>SENHA</label>
+    <input id="loginSenha" type="password" autocomplete="current-password">
+    <div class="errMsg hidden" id="loginErro"></div>
+    <button class="primary" id="loginBtn">Entrar</button>
+  </div>
+</div>
+
+<div id="painel" class="hidden">
+  <div class="wrap">
+    <div class="topRow">
+      <div>
+        <h1>Painel de Administrador</h1>
+        <p>Saques, depósitos e empresas parceiras — ShielD.</p>
+      </div>
+      <button id="sairBtn">Sair</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tabBtn active" data-tab="saques">Saques Pendentes</button>
+      <button class="tabBtn" data-tab="saquesPagos">Saques Pagos</button>
+      <button class="tabBtn" data-tab="depositos">Depósitos</button>
+      <button class="tabBtn" data-tab="empresas">Empresas Parceiras</button>
+    </div>
+
+    <div id="conteudo"><div class="loading">Carregando...</div></div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://xnnhhhsxoaprgvfvqaak.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_QzFnirQmvpN4WVwxiBBVeg_zVMNC7O1';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+function fmtBRL(v) { return (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+function fmtData(d) { return new Date(d).toLocaleString('pt-BR'); }
+function extrairChavePix(descricao) {
+  const m = (descricao || '').match(/chave:\s*(.+)$/i);
+  return m ? m[1].trim() : (descricao || '-');
+}
+
+let abaAtiva = 'saques';
+let cacheNomes = {};
+
+async function buscarNomes(ids) {
+  const faltando = ids.filter((id) => !cacheNomes[id]);
+  if (faltando.length === 0) return;
+  const { data: profs } = await sb.from('profiles').select('id, full_name').in('id', faltando);
+  (profs || []).forEach((p) => { cacheNomes[p.id] = p.full_name; });
+  const semNome = faltando.filter((id) => !cacheNomes[id]);
+  if (semNome.length > 0) {
+    const { data: emps } = await sb.from('empresas_parceiras').select('id, razao_social').in('id', semNome);
+    (emps || []).forEach((e) => { cacheNomes[e.id] = e.razao_social + ' (empresa)'; });
+  }
+}
+
+async function renderSaques(status, tituloVazio) {
+  const conteudo = document.getElementById('conteudo');
+  conteudo.innerHTML = '<div class="loading">Carregando...</div>';
+  const { data, error } = await sb
+    .from('wallet_transactions')
+    .select('id, wallet_id, amount, description, created_at')
+    .eq('type', 'withdrawal').eq('status', status)
+    .order('created_at', { ascending: status === 'pending' });
+  if (error) { conteudo.innerHTML = '<div class="empty">Erro ao carregar: ' + error.message + '</div>'; return; }
+
+  const lista = data || [];
+  if (lista.length === 0) { conteudo.innerHTML = '<div class="empty">' + tituloVazio + '</div>'; return; }
+
+  await buscarNomes(lista.map((t) => t.wallet_id));
+
+  conteudo.innerHTML = lista.map((t) => `
+    <div class="card">
+      <div class="info">
+        <div class="nome">${cacheNomes[t.wallet_id] || 'Desconhecido'}</div>
+        <div class="detalhe">Chave Pix: ${extrairChavePix(t.description)}</div>
+        <div class="data">${fmtData(t.created_at)}</div>
+      </div>
+      <div class="direita">
+        <div class="valor">${fmtBRL(t.amount)}</div>
+        ${status === 'pending'
+          ? `<button class="acao" data-id="${t.id}" onclick="marcarPago('${t.id}')">Marcar como pago</button>`
+          : `<span class="pagoTag">✓ Pago</span>`}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function marcarPago(id) {
+  const btn = document.querySelector(`button[data-id="${id}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Marcando...'; }
+  try {
+    const { data, error } = await sb.rpc('marcar_saque_pago', { p_transaction_id: id });
+    if (error) throw error;
+    if (data && data.ok) renderSaques('pending', 'Nenhum saque pendente no momento.');
+    else alert('Não foi possível marcar como pago.');
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+window.marcarPago = marcarPago;
+
+async function renderDepositos() {
+  const conteudo = document.getElementById('conteudo');
+  conteudo.innerHTML = '<div class="loading">Carregando...</div>';
+  const { data, error } = await sb
+    .from('wallet_transactions')
+    .select('id, wallet_id, amount, description, status, created_at')
+    .eq('type', 'credit')
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) { conteudo.innerHTML = '<div class="empty">Erro ao carregar: ' + error.message + '</div>'; return; }
+
+  const lista = data || [];
+  if (lista.length === 0) { conteudo.innerHTML = '<div class="empty">Nenhum depósito registrado ainda.</div>'; return; }
+
+  await buscarNomes(lista.map((t) => t.wallet_id));
+
+  conteudo.innerHTML = lista.map((t) => `
+    <div class="card">
+      <div class="info">
+        <div class="nome">${cacheNomes[t.wallet_id] || 'Desconhecido'}</div>
+        <div class="detalhe">${t.description || 'Crédito'}</div>
+        <div class="data">${fmtData(t.created_at)}</div>
+      </div>
+      <div class="direita">
+        <div class="valor valorVerde">+${fmtBRL(t.amount)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function renderEmpresas() {
+  const conteudo = document.getElementById('conteudo');
+  conteudo.innerHTML = '<div class="loading">Carregando...</div>';
+  const { data, error } = await sb
+    .from('empresas_parceiras')
+    .select('id, razao_social, cnpj, plano, is_online, created_at')
+    .order('created_at', { ascending: false });
+  if (error) { conteudo.innerHTML = '<div class="empty">Erro ao carregar: ' + error.message + '</div>'; return; }
+
+  const lista = data || [];
+  if (lista.length === 0) { conteudo.innerHTML = '<div class="empty">Nenhuma empresa parceira cadastrada ainda.</div>'; return; }
+
+  conteudo.innerHTML = lista.map((e) => {
+    const planoClasse = (e.plano || 'bronze').toLowerCase();
+    return `
+    <div class="card">
+      <div class="info">
+        <div class="nome">${e.razao_social || 'Sem nome'}</div>
+        <div class="detalhe">CNPJ: ${e.cnpj || '-'}</div>
+        <div class="data">Desde ${fmtData(e.created_at)}</div>
+      </div>
+      <div class="direita">
+        <span class="badge ${planoClasse}">${(e.plano || 'bronze').toUpperCase()}</span>
+        <span class="badge ${e.is_online ? 'online' : 'offline'}">${e.is_online ? 'Online' : 'Offline'}</span>
+      </div>
+    </div>
+  `; }).join('');
+}
+
+function renderAba(tab) {
+  abaAtiva = tab;
+  document.querySelectorAll('.tabBtn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  if (tab === 'saques') renderSaques('pending', 'Nenhum saque pendente no momento.');
+  else if (tab === 'saquesPagos') renderSaques('completed', 'Nenhum saque pago ainda.');
+  else if (tab === 'depositos') renderDepositos();
+  else if (tab === 'empresas') renderEmpresas();
+}
+
+document.querySelectorAll('.tabBtn').forEach((b) => b.addEventListener('click', () => renderAba(b.dataset.tab)));
+
+document.getElementById('sairBtn').addEventListener('click', async () => {
+  await sb.auth.signOut();
+  window.location.reload();
+});
+
+async function tentarLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const senha = document.getElementById('loginSenha').value;
+  const erroEl = document.getElementById('loginErro');
+  const btn = document.getElementById('loginBtn');
+  erroEl.classList.add('hidden');
+  if (!email || !senha) { erroEl.textContent = 'Preencha e-mail e senha.'; erroEl.classList.remove('hidden'); return; }
+  btn.disabled = true; btn.textContent = 'Entrando...';
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: senha });
+    if (error) throw error;
+    const userId = data && data.user ? data.user.id : null;
+    if (!userId) throw new Error('Não foi possível identificar sua conta.');
+
+    const { data: adminRow } = await sb.from('admin_users').select('id').eq('id', userId).maybeSingle();
+    if (!adminRow) {
+      await sb.auth.signOut();
+      throw new Error('Essa conta não tem acesso ao painel de administrador.');
+    }
+    mostrarPainel();
+  } catch (e) {
+    erroEl.textContent = e.message || 'Falha ao entrar.';
+    erroEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Entrar';
+  }
+}
+document.getElementById('loginBtn').addEventListener('click', tentarLogin);
+document.getElementById('loginSenha').addEventListener('keydown', (e) => { if (e.key === 'Enter') tentarLogin(); });
+
+function mostrarPainel() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('painel').classList.remove('hidden');
+  renderAba('saques');
+}
+
+(async function verificarSessao() {
+  const { data } = await sb.auth.getSession();
+  const userId = data && data.session ? data.session.user.id : null;
+  if (!userId) return;
+  const { data: adminRow } = await sb.from('admin_users').select('id').eq('id', userId).maybeSingle();
+  if (adminRow) mostrarPainel();
+})();
+</script>
+</body>
+</html>
