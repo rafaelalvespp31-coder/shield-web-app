@@ -55,6 +55,25 @@
 
   .empty { color: #8A97A3; font-size: 13px; text-align: center; padding: 40px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 16px; }
   .loading { color: #8A97A3; font-size: 13px; text-align: center; padding: 40px; }
+
+  /* DOCUMENTOS */
+  .subTabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .subTabBtn { height: 32px; padding: 0 14px; border-radius: 999px; border: none; cursor: pointer; font-size: 11.5px; font-weight: 700; background: #121A22; color: #8A97A3; border: 1px solid rgba(255,255,255,0.08); }
+  .subTabBtn.active { background: #F59E0B; color: #0A0F14; border-color: transparent; }
+  .docCard { background: #121A22; border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 16px; margin-bottom: 10px; }
+  .docTopo { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .docBotoes { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  button.docBtn { height: 34px; padding: 0 14px; border-radius: 10px; background: #1A2530; color: #D1D5DB; font-size: 11.5px; font-weight: 700; border: 1px solid rgba(255,255,255,0.08); cursor: pointer; }
+  button.docBtn:disabled { background: #161C24; color: #5B6572; cursor: not-allowed; }
+  .badge.pending, .badge.em_analise { background: rgba(245,158,11,0.15); color: #F59E0B; }
+  .badge.aprovado { background: rgba(16,185,129,0.15); color: #10B981; }
+  .badge.rejeitado { background: rgba(239,68,68,0.15); color: #EF4444; }
+  .motivoRejeitado { color: #EF4444; font-size: 11.5px; margin-bottom: 10px; background: rgba(239,68,68,0.08); border-radius: 8px; padding: 8px; }
+  .docAcoes { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; }
+  .docAcoes input { flex: 1 1 200px; height: 34px; margin-bottom: 0; font-size: 11.5px; }
+  button.rejeitarBtn { height: 34px; padding: 0 14px; border-radius: 10px; background: transparent; color: #EF4444; font-size: 11.5px; font-weight: 700; border: 1px solid rgba(239,68,68,0.4); cursor: pointer; white-space: nowrap; }
+  button.aprovarBtn { height: 34px; padding: 0 16px; border-radius: 10px; background: #10B981; color: #06231A; font-size: 11.5px; font-weight: 800; border: none; cursor: pointer; white-space: nowrap; }
+  button.rejeitarBtn:disabled, button.aprovarBtn:disabled { opacity: 0.5; cursor: default; }
 </style>
 </head>
 <body>
@@ -88,6 +107,7 @@
       <button class="tabBtn" data-tab="saquesPagos">Saques Pagos</button>
       <button class="tabBtn" data-tab="depositos">Depósitos</button>
       <button class="tabBtn" data-tab="empresas">Empresas Parceiras</button>
+      <button class="tabBtn" data-tab="documentos">Documentos</button>
     </div>
 
     <div id="conteudo"><div class="loading">Carregando...</div></div>
@@ -226,6 +246,184 @@ async function renderEmpresas() {
   `; }).join('');
 }
 
+// ------------------------------------------------------------
+// DOCUMENTOS - revisão dos cadastros (prestador autônomo,
+// vinculado e empresa parceira) num só lugar. Os arquivos ficam
+// em buckets PRIVADOS (provider-documents / company-documents),
+// então a visualização usa signed URL (expira em 1h) gerada na
+// hora - ninguém enxerga o documento sem passar por aqui.
+// Atualiza sozinho em tempo real via Supabase Realtime.
+// ------------------------------------------------------------
+let abaDocumentos = 'pendentes';
+const rotuloStatusDoc = {
+  pending: 'Pendente (docs não enviados)',
+  em_analise: 'Em análise',
+  aprovado: 'Aprovado',
+  rejeitado: 'Rejeitado',
+};
+
+async function buscarCadastros(statusAlvo) {
+  const [{ data: prestadores, error: errP }, { data: empresas, error: errE }] = await Promise.all([
+    sb.from('usuarios_prestadores')
+      .select('id, bio, tipo_prestador, documents_status, documents_rejection_reason, antecedentes_document_path, rg_document_path, profiles(full_name, phone, cpf_cnpj)')
+      .in('documents_status', statusAlvo),
+    sb.from('empresas_parceiras')
+      .select('id, razao_social, cnpj, telefone, documents_status, documents_rejection_reason, autorizacao_pf_document_path')
+      .in('documents_status', statusAlvo),
+  ]);
+  if (errP) throw errP;
+  if (errE) throw errE;
+
+  const listaPrestadores = (prestadores || []).map((p) => ({
+    tipo: 'prestador',
+    id: p.id,
+    nome: p.profiles ? p.profiles.full_name : 'Sem nome',
+    telefone: p.profiles ? p.profiles.phone : '-',
+    documento: p.profiles ? p.profiles.cpf_cnpj : '-',
+    subtitulo: p.tipo_prestador === 'vinculado' ? 'Vinculado (empresa)' : 'Autônomo',
+    bio: p.bio,
+    documents_status: p.documents_status,
+    documents_rejection_reason: p.documents_rejection_reason,
+    docs: [
+      { label: 'antecedentes criminais', bucket: 'provider-documents', path: p.antecedentes_document_path },
+      { label: 'foto com RG', bucket: 'provider-documents', path: p.rg_document_path },
+    ],
+  }));
+
+  const listaEmpresas = (empresas || []).map((e) => ({
+    tipo: 'empresa',
+    id: e.id,
+    nome: e.razao_social,
+    telefone: e.telefone,
+    documento: e.cnpj,
+    subtitulo: 'Empresa Parceira',
+    bio: null,
+    documents_status: e.documents_status,
+    documents_rejection_reason: e.documents_rejection_reason,
+    docs: [
+      { label: 'autorização de funcionamento (PF)', bucket: 'company-documents', path: e.autorizacao_pf_document_path },
+    ],
+  }));
+
+  return [...listaPrestadores, ...listaEmpresas];
+}
+
+async function abrirDocumento(bucket, path, btn) {
+  if (!path) return;
+  const textoOriginal = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Abrindo...';
+  try {
+    const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 3600);
+    if (error) throw error;
+    window.open(data.signedUrl, '_blank');
+  } catch (e) {
+    alert('Não foi possível abrir o documento: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = textoOriginal;
+  }
+}
+window.abrirDocumento = abrirDocumento;
+
+async function aprovarCadastro(tipo, id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+  try {
+    const tabela = tipo === 'empresa' ? 'empresas_parceiras' : 'usuarios_prestadores';
+    const campos = tipo === 'empresa'
+      ? { documents_status: 'aprovado', verified: true, documents_rejection_reason: null }
+      : { documents_status: 'aprovado', verificado: true, documents_rejection_reason: null };
+    const { error } = await sb.from(tabela).update(campos).eq('id', id);
+    if (error) throw error;
+    renderDocumentos();
+  } catch (e) {
+    alert('Não foi possível aprovar: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Aprovar'; }
+  }
+}
+window.aprovarCadastro = aprovarCadastro;
+
+async function rejeitarCadastro(tipo, id, btn) {
+  const inputMotivo = document.getElementById('motivo_' + tipo + '_' + id);
+  const motivo = inputMotivo ? inputMotivo.value.trim() : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+  try {
+    const tabela = tipo === 'empresa' ? 'empresas_parceiras' : 'usuarios_prestadores';
+    const campos = tipo === 'empresa'
+      ? { documents_status: 'rejeitado', verified: false, documents_rejection_reason: motivo || null }
+      : { documents_status: 'rejeitado', verificado: false, documents_rejection_reason: motivo || null };
+    const { error } = await sb.from(tabela).update(campos).eq('id', id);
+    if (error) throw error;
+    renderDocumentos();
+  } catch (e) {
+    alert('Não foi possível rejeitar: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Rejeitar'; }
+  }
+}
+window.rejeitarCadastro = rejeitarCadastro;
+
+function trocarAbaDocumentos(sub) {
+  abaDocumentos = sub;
+  renderDocumentos();
+}
+window.trocarAbaDocumentos = trocarAbaDocumentos;
+
+async function renderDocumentos() {
+  const conteudo = document.getElementById('conteudo');
+  const statusAlvo = abaDocumentos === 'pendentes' ? ['pending', 'em_analise'] : ['aprovado', 'rejeitado'];
+
+  const subTabsHtml = `
+    <div class="subTabs">
+      <button class="subTabBtn ${abaDocumentos === 'pendentes' ? 'active' : ''}" onclick="trocarAbaDocumentos('pendentes')">Pendentes</button>
+      <button class="subTabBtn ${abaDocumentos === 'revisados' ? 'active' : ''}" onclick="trocarAbaDocumentos('revisados')">Já revisados</button>
+    </div>`;
+
+  conteudo.innerHTML = subTabsHtml + '<div class="loading">Carregando...</div>';
+
+  let lista;
+  try {
+    lista = await buscarCadastros(statusAlvo);
+  } catch (e) {
+    conteudo.innerHTML = subTabsHtml + '<div class="empty">Erro ao carregar: ' + e.message + '</div>';
+    return;
+  }
+
+  if (abaAtiva !== 'documentos') return; // usuário já trocou de aba enquanto carregava
+
+  if (lista.length === 0) {
+    conteudo.innerHTML = subTabsHtml + '<div class="empty">' +
+      (abaDocumentos === 'pendentes' ? 'Nenhum cadastro pendente de revisão.' : 'Nenhum cadastro revisado ainda.') +
+      '</div>';
+    return;
+  }
+
+  conteudo.innerHTML = subTabsHtml + lista.map((p) => `
+    <div class="docCard">
+      <div class="docTopo">
+        <div>
+          <div class="nome">${p.nome || 'Sem nome'}</div>
+          <div class="detalhe">Tel: ${p.telefone || '-'} · Doc: ${p.documento || '-'}</div>
+          <div class="data">${p.subtitulo}</div>
+        </div>
+        <span class="badge ${p.documents_status}">${rotuloStatusDoc[p.documents_status] || p.documents_status}</span>
+      </div>
+      ${p.bio ? `<div class="detalhe" style="margin-bottom:10px;">${p.bio}</div>` : ''}
+      <div class="docBotoes">
+        ${p.docs.map((doc) => doc.path
+          ? `<button class="docBtn" onclick="abrirDocumento('${doc.bucket}','${doc.path}', this)">Ver ${doc.label}</button>`
+          : `<button class="docBtn" disabled>${doc.label.charAt(0).toUpperCase() + doc.label.slice(1)} não enviado(a)</button>`
+        ).join('')}
+      </div>
+      ${p.documents_status === 'rejeitado' && p.documents_rejection_reason
+        ? `<div class="motivoRejeitado">Motivo da rejeição: ${p.documents_rejection_reason}</div>` : ''}
+      ${abaDocumentos === 'pendentes' ? `
+        <div class="docAcoes">
+          <input id="motivo_${p.tipo}_${p.id}" placeholder="Motivo da rejeição (opcional)">
+          <button class="rejeitarBtn" onclick="rejeitarCadastro('${p.tipo}','${p.id}', this)">Rejeitar</button>
+          <button class="aprovarBtn" onclick="aprovarCadastro('${p.tipo}','${p.id}', this)">Aprovar</button>
+        </div>` : ''}
+    </div>
+  `).join('');
+}
+
 function renderAba(tab) {
   abaAtiva = tab;
   document.querySelectorAll('.tabBtn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
@@ -233,6 +431,25 @@ function renderAba(tab) {
   else if (tab === 'saquesPagos') renderSaques('completed', 'Nenhum saque pago ainda.');
   else if (tab === 'depositos') renderDepositos();
   else if (tab === 'empresas') renderEmpresas();
+  else if (tab === 'documentos') renderDocumentos();
+}
+
+// Tempo real: qualquer INSERT/UPDATE em usuarios_prestadores ou
+// empresas_parceiras atualiza a aba Documentos sozinha, sem F5 -
+// tanto pra novos cadastros chegando quanto pra mudanças de status
+// feitas por outro admin em outra aba/computador.
+let canalDocumentosRealtime = null;
+function iniciarRealtimeDocumentos() {
+  if (canalDocumentosRealtime) return;
+  canalDocumentosRealtime = sb
+    .channel('admin-documentos-realtime')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'usuarios_prestadores' }, () => {
+      if (abaAtiva === 'documentos') renderDocumentos();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'empresas_parceiras' }, () => {
+      if (abaAtiva === 'documentos') renderDocumentos();
+    })
+    .subscribe();
 }
 
 document.querySelectorAll('.tabBtn').forEach((b) => b.addEventListener('click', () => renderAba(b.dataset.tab)));
@@ -276,6 +493,7 @@ function mostrarPainel() {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('painel').classList.remove('hidden');
   renderAba('saques');
+  iniciarRealtimeDocumentos();
 }
 
 (async function verificarSessao() {
