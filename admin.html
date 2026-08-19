@@ -74,6 +74,16 @@
   button.rejeitarBtn { height: 34px; padding: 0 14px; border-radius: 10px; background: transparent; color: #EF4444; font-size: 11.5px; font-weight: 700; border: 1px solid rgba(239,68,68,0.4); cursor: pointer; white-space: nowrap; }
   button.aprovarBtn { height: 34px; padding: 0 16px; border-radius: 10px; background: #10B981; color: #06231A; font-size: 11.5px; font-weight: 800; border: none; cursor: pointer; white-space: nowrap; }
   button.rejeitarBtn:disabled, button.aprovarBtn:disabled { opacity: 0.5; cursor: default; }
+
+  /* ONLINE AGORA */
+  .onlineTopo { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .onlineContagem { font-size: 12px; color: #8A97A3; }
+  .onlineContagem b { color: #10B981; font-size: 15px; }
+  .pulseDot { width: 8px; height: 8px; border-radius: 999px; background: #10B981; display: inline-block; margin-right: 8px; box-shadow: 0 0 0 0 rgba(16,185,129,0.6); animation: pulseDot 1.6s infinite; }
+  @keyframes pulseDot { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); } 70% { box-shadow: 0 0 0 8px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
+  .onlineCard { background: #121A22; border: 1px solid rgba(16,185,129,0.25); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .onlineCard .esquerda { display: flex; align-items: center; }
+  .onlineCard .rating { color: #F59E0B; font-size: 11.5px; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -108,6 +118,7 @@
       <button class="tabBtn" data-tab="depositos">Depósitos</button>
       <button class="tabBtn" data-tab="empresas">Empresas Parceiras</button>
       <button class="tabBtn" data-tab="documentos">Documentos</button>
+      <button class="tabBtn" data-tab="online">Online Agora</button>
     </div>
 
     <div id="conteudo"><div class="loading">Carregando...</div></div>
@@ -265,7 +276,7 @@ const rotuloStatusDoc = {
 async function buscarCadastros(statusAlvo) {
   const [{ data: prestadores, error: errP }, { data: empresas, error: errE }] = await Promise.all([
     sb.from('usuarios_prestadores')
-      .select('id, bio, tipo_prestador, documents_status, documents_rejection_reason, antecedentes_document_path, rg_document_path, profiles(full_name, phone, cpf_cnpj)')
+      .select('id, bio, tipo_prestador, documents_status, documents_rejection_reason, antecedentes_document_path, rg_document_path')
       .in('documents_status', statusAlvo),
     sb.from('empresas_parceiras')
       .select('id, razao_social, cnpj, telefone, documents_status, documents_rejection_reason, autorizacao_pf_document_path')
@@ -274,21 +285,39 @@ async function buscarCadastros(statusAlvo) {
   if (errP) throw errP;
   if (errE) throw errE;
 
-  const listaPrestadores = (prestadores || []).map((p) => ({
-    tipo: 'prestador',
-    id: p.id,
-    nome: p.profiles ? p.profiles.full_name : 'Sem nome',
-    telefone: p.profiles ? p.profiles.phone : '-',
-    documento: p.profiles ? p.profiles.cpf_cnpj : '-',
-    subtitulo: p.tipo_prestador === 'vinculado' ? 'Vinculado (empresa)' : 'Autônomo',
-    bio: p.bio,
-    documents_status: p.documents_status,
-    documents_rejection_reason: p.documents_rejection_reason,
-    docs: [
-      { label: 'antecedentes criminais', bucket: 'provider-documents', path: p.antecedentes_document_path },
-      { label: 'foto com RG', bucket: 'provider-documents', path: p.rg_document_path },
-    ],
-  }));
+  // Busca os perfis (nome/telefone/cpf) numa consulta separada. Fazemos
+  // assim (em vez do embed profiles(...)) porque existe mais de uma FK
+  // entre usuarios_prestadores e profiles, o que deixa o embed automático
+  // ambíguo pro PostgREST.
+  const idsPrestadores = (prestadores || []).map((p) => p.id);
+  let mapaPerfis = {};
+  if (idsPrestadores.length > 0) {
+    const { data: perfis, error: errPerfis } = await sb
+      .from('profiles')
+      .select('id, full_name, phone, cpf_cnpj')
+      .in('id', idsPrestadores);
+    if (errPerfis) throw errPerfis;
+    (perfis || []).forEach((pf) => { mapaPerfis[pf.id] = pf; });
+  }
+
+  const listaPrestadores = (prestadores || []).map((p) => {
+    const perfil = mapaPerfis[p.id];
+    return {
+      tipo: 'prestador',
+      id: p.id,
+      nome: perfil ? perfil.full_name : 'Sem nome',
+      telefone: perfil ? perfil.phone : '-',
+      documento: perfil ? perfil.cpf_cnpj : '-',
+      subtitulo: p.tipo_prestador === 'vinculado' ? 'Vinculado (empresa)' : 'Autônomo',
+      bio: p.bio,
+      documents_status: p.documents_status,
+      documents_rejection_reason: p.documents_rejection_reason,
+      docs: [
+        { label: 'antecedentes criminais', bucket: 'provider-documents', path: p.antecedentes_document_path },
+        { label: 'foto com RG', bucket: 'provider-documents', path: p.rg_document_path },
+      ],
+    };
+  });
 
   const listaEmpresas = (empresas || []).map((e) => ({
     tipo: 'empresa',
@@ -432,6 +461,63 @@ function renderAba(tab) {
   else if (tab === 'depositos') renderDepositos();
   else if (tab === 'empresas') renderEmpresas();
   else if (tab === 'documentos') renderDocumentos();
+  else if (tab === 'online') renderOnline();
+}
+
+// ------------------------------------------------------------
+// ONLINE AGORA - todo prestador (autônomo ou vinculado) com
+// is_online = true nesse instante. Atualiza sozinho em tempo real:
+// o mesmo canal Realtime de usuarios_prestadores usado na aba
+// Documentos já dispara aqui também quando alguém liga/desliga.
+// ------------------------------------------------------------
+async function renderOnline() {
+  const conteudo = document.getElementById('conteudo');
+  conteudo.innerHTML = '<div class="loading">Carregando...</div>';
+  const { data, error } = await sb
+    .from('usuarios_prestadores')
+    .select('id, tipo_prestador, rating_avg, rating_count')
+    .eq('is_online', true)
+    .order('rating_avg', { ascending: false });
+  if (error) { conteudo.innerHTML = '<div class="empty">Erro ao carregar: ' + error.message + '</div>'; return; }
+  if (abaAtiva !== 'online') return; // trocou de aba enquanto carregava
+
+  const lista = data || [];
+
+  // Perfis buscados à parte (mesmo motivo da aba Documentos: mais de
+  // uma FK entre usuarios_prestadores e profiles deixa o embed ambíguo).
+  let mapaPerfis = {};
+  if (lista.length > 0) {
+    const { data: perfis } = await sb
+      .from('profiles')
+      .select('id, full_name, phone')
+      .in('id', lista.map((p) => p.id));
+    (perfis || []).forEach((pf) => { mapaPerfis[pf.id] = pf; });
+  }
+
+  const topo = `
+    <div class="onlineTopo">
+      <span class="onlineContagem"><span class="pulseDot"></span>Prestadores online agora: <b>${lista.length}</b></span>
+    </div>`;
+
+  if (lista.length === 0) {
+    conteudo.innerHTML = topo + '<div class="empty">Nenhum prestador online no momento.</div>';
+    return;
+  }
+
+  conteudo.innerHTML = topo + lista.map((p) => {
+    const perfil = mapaPerfis[p.id];
+    return `
+    <div class="onlineCard">
+      <div class="esquerda">
+        <span class="pulseDot"></span>
+        <div>
+          <div class="nome">${perfil ? perfil.full_name : 'Sem nome'}</div>
+          <div class="detalhe">${p.tipo_prestador === 'vinculado' ? 'Vinculado (empresa)' : 'Autônomo'} · Tel: ${perfil ? perfil.phone : '-'}</div>
+        </div>
+      </div>
+      <span class="rating">★ ${(p.rating_avg || 0).toFixed(1)} (${p.rating_count || 0})</span>
+    </div>
+  `; }).join('');
 }
 
 // Tempo real: qualquer INSERT/UPDATE em usuarios_prestadores ou
@@ -445,6 +531,7 @@ function iniciarRealtimeDocumentos() {
     .channel('admin-documentos-realtime')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'usuarios_prestadores' }, () => {
       if (abaAtiva === 'documentos') renderDocumentos();
+      if (abaAtiva === 'online') renderOnline();
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'empresas_parceiras' }, () => {
       if (abaAtiva === 'documentos') renderDocumentos();
