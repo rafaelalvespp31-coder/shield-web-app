@@ -84,6 +84,14 @@
   .onlineCard { background: #121A22; border: 1px solid rgba(16,185,129,0.25); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .onlineCard .esquerda { display: flex; align-items: center; }
   .onlineCard .rating { color: #F59E0B; font-size: 11.5px; font-weight: 700; }
+
+  /* TODAS AS CONTAS */
+  .buscaContas { width: 100%; max-width: 420px; margin-bottom: 14px; }
+  .roleTag { font-size: 10px; padding: 3px 9px; border-radius: 999px; font-weight: 700; }
+  .roleTag.client { background: rgba(78,217,240,0.15); color: #4ED9F0; }
+  .roleTag.provider { background: rgba(255,215,0,0.15); color: #FFD700; }
+  .roleTag.company { background: rgba(16,185,129,0.15); color: #10B981; }
+  .contaCard .email { color: #8A97A3; font-size: 11.5px; margin-top: 2px; word-break: break-all; }
 </style>
 </head>
 <body>
@@ -119,6 +127,7 @@
       <button class="tabBtn" data-tab="empresas">Empresas Parceiras</button>
       <button class="tabBtn" data-tab="documentos">Documentos</button>
       <button class="tabBtn" data-tab="online">Online Agora</button>
+      <button class="tabBtn" data-tab="contas">Todas as Contas</button>
     </div>
 
     <div id="conteudo"><div class="loading">Carregando...</div></div>
@@ -453,6 +462,86 @@ async function renderDocumentos() {
   `).join('');
 }
 
+// ------------------------------------------------------------
+// TODAS AS CONTAS - lista todo mundo cadastrado na plataforma
+// (cliente, prestador autônomo/vinculado e empresa parceira) com
+// e-mail. O e-mail vem via RPC admin_listar_contas (só admin
+// consegue chamar - confere isso no próprio banco). Tem busca por
+// nome/e-mail e atualiza sozinho em tempo real.
+// ------------------------------------------------------------
+let contasCache = [];
+let buscaContasTexto = '';
+
+const rotuloRole = {
+  client: 'Cliente',
+  provider: 'Prestador',
+  company: 'Empresa Parceira',
+};
+
+function filtrarContas() {
+  const termo = buscaContasTexto.trim().toLowerCase();
+  if (!termo) return contasCache;
+  return contasCache.filter((c) =>
+    (c.full_name || '').toLowerCase().includes(termo) ||
+    (c.email || '').toLowerCase().includes(termo) ||
+    (c.phone || '').toLowerCase().includes(termo)
+  );
+}
+
+function desenharListaContas() {
+  const conteudo = document.getElementById('conteudo');
+  const buscaHtml = `
+    <input
+      id="buscaContasInput"
+      class="buscaContas"
+      placeholder="Buscar por nome, e-mail ou telefone..."
+      value="${buscaContasTexto.replace(/"/g, '&quot;')}"
+      oninput="buscaContasTexto = this.value; desenharListaContas();"
+    >`;
+
+  const lista = filtrarContas();
+  if (lista.length === 0) {
+    conteudo.innerHTML = buscaHtml + '<div class="empty">Nenhuma conta encontrada.</div>';
+    return;
+  }
+
+  conteudo.innerHTML = buscaHtml + `<div style="margin-bottom:10px;color:#8A97A3;font-size:12px;">Total: <b style="color:#fff;">${lista.length}</b></div>` +
+    lista.map((c) => `
+    <div class="card contaCard">
+      <div class="info">
+        <div class="nome">${c.full_name || 'Sem nome'} <span class="roleTag ${c.role}">${rotuloRole[c.role] || c.role}</span></div>
+        <div class="email">${c.email || '-'}</div>
+        <div class="detalhe">Tel: ${c.phone || '-'}</div>
+        <div class="data">Cadastrado em ${fmtData(c.created_at)}</div>
+      </div>
+    </div>
+  `).join('');
+
+  // Reposiciona o cursor no input depois de re-renderizar (o innerHTML
+  // recria o elemento, então sem isso o foco se perde a cada letra digitada)
+  const inputEl = document.getElementById('buscaContasInput');
+  if (inputEl) {
+    inputEl.focus();
+    const pos = inputEl.value.length;
+    inputEl.setSelectionRange(pos, pos);
+  }
+}
+window.desenharListaContas = desenharListaContas;
+
+async function renderContas() {
+  const conteudo = document.getElementById('conteudo');
+  conteudo.innerHTML = '<div class="loading">Carregando...</div>';
+  try {
+    const { data, error } = await sb.rpc('admin_listar_contas');
+    if (error) throw error;
+    contasCache = data || [];
+    if (abaAtiva !== 'contas') return;
+    desenharListaContas();
+  } catch (e) {
+    conteudo.innerHTML = '<div class="empty">Erro ao carregar: ' + e.message + '</div>';
+  }
+}
+
 function renderAba(tab) {
   abaAtiva = tab;
   document.querySelectorAll('.tabBtn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
@@ -462,6 +551,7 @@ function renderAba(tab) {
   else if (tab === 'empresas') renderEmpresas();
   else if (tab === 'documentos') renderDocumentos();
   else if (tab === 'online') renderOnline();
+  else if (tab === 'contas') renderContas();
 }
 
 // ------------------------------------------------------------
@@ -635,6 +725,9 @@ function iniciarRealtimeDocumentos() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'empresas_parceiras' }, () => {
       if (abaAtiva === 'documentos') renderDocumentos();
       if (abaAtiva === 'online') renderOnline();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+      if (abaAtiva === 'contas') renderContas();
     })
     .subscribe();
 }
