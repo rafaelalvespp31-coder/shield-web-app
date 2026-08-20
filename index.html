@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>ShielD — Segurança sob Demanda</title>
+<title>ShielD — Prestação de Serviços sob Demanda</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
@@ -3518,6 +3518,7 @@ const ROLES = [{
   rgb: '78,217,240',
   buttonText: '#08141A',
   placeholder: 'E-mail ou CPF',
+  headline: 'Solicite profissionais verificados sem burocracia.',
   subtitle: 'Acesse sua conta protegida e solicite proteção em segundos.',
   button: 'ENTRAR',
   shimmer: false
@@ -3532,6 +3533,7 @@ const ROLES = [{
   rgb: '255,215,0',
   buttonText: '#1A1A0A',
   placeholder: 'E-mail ou CPF',
+  headline: 'Receba demandas em poucos cliques e faça uma renda extra.',
   subtitle: 'Gerencie suas missões e disponibilidade como prestador verificado.',
   button: 'ACESSAR COMO PRESTADOR',
   shimmer: true
@@ -3546,6 +3548,7 @@ const ROLES = [{
   rgb: '16,185,129',
   buttonText: '#FFFFFF',
   placeholder: 'CNPJ ou E-mail',
+  headline: 'Gerencie sua equipe em um só lugar.',
   subtitle: 'Acesse o painel da sua empresa e gerencie sua equipe completa.',
   button: 'ACESSAR PAINEL EMPRESA',
   shimmer: false
@@ -3560,6 +3563,7 @@ const ROLES = [{
   rgb: '107,142,35',
   buttonText: '#FFFFFF',
   placeholder: 'E-mail ou CPF',
+  headline: 'Receba demandas em poucos cliques e faça uma renda extra.',
   subtitle: 'Acesso do profissional vinculado à empresa parceira.',
   button: 'ACESSAR COMO VINCULADO',
   shimmer: false
@@ -3574,6 +3578,48 @@ function NovoLoginScreen({ role: activeRoleId, setRole, onLoginSuccess, onCadast
   const [erroLogin, setErroLogin] = useState('');
   const [loadingLogin, setLoadingLogin] = useState(false);
   const [showEsqueciSenha, setShowEsqueciSenha] = useState(false);
+
+  // Contador de usuários cadastrados (todas as categorias juntas -
+  // cliente, prestador autônomo/vinculado e empresa parceira usam a
+  // mesma tabela profiles, então um COUNT nela já cobre todo mundo).
+  // Atualiza em tempo real via Realtime e anima em contagem progressiva
+  // toda vez que o número muda.
+  const [totalUsuarios, setTotalUsuarios] = useState(0);
+  const [totalUsuariosAnimado, setTotalUsuariosAnimado] = useState(0);
+  useEffect(() => {
+    let canal;
+    (async () => {
+      try {
+        const { count } = await sb.from('profiles').select('id', { count: 'exact', head: true });
+        setTotalUsuarios(count || 0);
+      } catch (e) { console.warn('Falha ao buscar total de usuários:', e.message); }
+      canal = sb.channel('total-usuarios-login')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'profiles' }, () => {
+          setTotalUsuarios((prev) => prev + 1);
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'profiles' }, () => {
+          setTotalUsuarios((prev) => Math.max(0, prev - 1));
+        })
+        .subscribe();
+    })();
+    return () => { if (canal) sb.removeChannel(canal); };
+  }, []);
+  useEffect(() => {
+    if (totalUsuariosAnimado === totalUsuarios) return;
+    const inicio = totalUsuariosAnimado;
+    const fim = totalUsuarios;
+    const t0 = performance.now();
+    const duracao = 900;
+    let frame;
+    const passo = (t) => {
+      const progresso = Math.min(1, (t - t0) / duracao);
+      setTotalUsuariosAnimado(Math.round(inicio + (fim - inicio) * progresso));
+      if (progresso < 1) frame = requestAnimationFrame(passo);
+    };
+    frame = requestAnimationFrame(passo);
+    return () => cancelAnimationFrame(frame);
+  }, [totalUsuarios]);
+
   const handleLogin = async e => {
     e.preventDefault();
     setErroLogin('');
@@ -3616,6 +3662,22 @@ function NovoLoginScreen({ role: activeRoleId, setRole, onLoginSuccess, onCadast
   }), /*#__PURE__*/React.createElement("div", {
     className: "relative z-10"
   }, /*#__PURE__*/React.createElement("div", {
+    className: "inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full backdrop-blur-xl",
+    style: {
+      background: 'rgba(255,255,255,0.06)',
+      border: "1px solid rgba(" + role.rgb + ",0.25)",
+      transition: 'border-color 0.4s'
+    }
+  }, /*#__PURE__*/React.createElement(IconUsers, {
+    style: {
+      width: 13,
+      height: 13,
+      color: role.light,
+      transition: 'color 0.4s'
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "text-[11.5px] font-semibold text-white/80 tabular-nums"
+  }, totalUsuariosAnimado.toLocaleString('pt-BR'), " usuários cadastrados")), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-3 mb-6 lg:mb-8"
   }, /*#__PURE__*/React.createElement("div", {
     className: "w-11 h-11 rounded-2xl flex items-center justify-center",
@@ -3658,9 +3720,9 @@ function NovoLoginScreen({ role: activeRoleId, setRole, onLoginSuccess, onCadast
       color: role.main,
       transition: 'color 0.4s'
     }
-  }, "Segurança premium")), /*#__PURE__*/React.createElement("h1", {
+  }, "Prestação de Serviços premium")), /*#__PURE__*/React.createElement("h1", {
     className: "font-display font-bold text-[30px] sm:text-[38px] lg:text-[38px] leading-[1.05] tracking-tight mb-3 max-w-[480px]"
-  }, "Proteção sob demanda."), /*#__PURE__*/React.createElement("p", {
+  }, role.headline), /*#__PURE__*/React.createElement("p", {
     className: "text-[14px] lg:text-[15px] text-white/55 leading-relaxed max-w-[380px] mb-5 lg:mb-6"
   }, "Solicite proteção imediata ou agendada de profissionais verificados. Resposta em minutos, cobertura total.")), /*#__PURE__*/React.createElement("div", {
     className: "relative z-10 hidden lg:flex items-center gap-4"
@@ -3674,12 +3736,12 @@ function NovoLoginScreen({ role: activeRoleId, setRole, onLoginSuccess, onCadast
   }, {
     Icon: IconTimer,
     title: 'Tempo médio 12min',
-    desc: 'Resposta imediata em áreas de cobertura',
+    desc: 'Resposta imediata em Belo Horizonte',
     kind: 'progress'
   }, {
     Icon: IconGlobe,
     title: 'Cobertura 24/7',
-    desc: 'São Paulo + 6 cidades • expansão nacional',
+    desc: 'Atende Belo Horizonte',
     kind: 'chips'
   }].map((f, i) => /*#__PURE__*/React.createElement("div", {
     key: i,
@@ -3737,7 +3799,7 @@ function NovoLoginScreen({ role: activeRoleId, setRole, onLoginSuccess, onCadast
     }
   })), f.kind === 'chips' && /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-1.5 mt-1.5"
-  }, ['SP', 'RJ', '+4'].map((chip, idx) => /*#__PURE__*/React.createElement("span", {
+  }, ['BH'].map((chip, idx) => /*#__PURE__*/React.createElement("span", {
     key: idx,
     className: "px-1.5 py-0.5 rounded-md text-[9.5px] font-bold text-white/70",
     style: {
