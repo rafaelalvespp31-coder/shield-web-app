@@ -3588,21 +3588,25 @@ function NovoLoginScreen({ role: activeRoleId, setRole, onLoginSuccess, onCadast
   const [totalUsuariosAnimado, setTotalUsuariosAnimado] = useState(0);
   useEffect(() => {
     let canal;
-    (async () => {
+    let intervalo;
+    const buscarTotal = async () => {
       try {
-        const { count } = await sb.from('profiles').select('id', { count: 'exact', head: true });
-        setTotalUsuarios(count || 0);
+        const { data, error } = await sb.rpc('contar_usuarios_total');
+        if (error) throw error;
+        setTotalUsuarios(Number(data) || 0);
       } catch (e) { console.warn('Falha ao buscar total de usuários:', e.message); }
-      canal = sb.channel('total-usuarios-login')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'profiles' }, () => {
-          setTotalUsuarios((prev) => prev + 1);
-        })
-        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'profiles' }, () => {
-          setTotalUsuarios((prev) => Math.max(0, prev - 1));
-        })
-        .subscribe();
-    })();
-    return () => { if (canal) sb.removeChannel(canal); };
+    };
+    buscarTotal();
+    canal = sb.channel('total-usuarios-login')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'profiles' }, buscarTotal)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'profiles' }, buscarTotal)
+      .subscribe();
+    // Reforço: essa tela é vista por quem ainda não fez login, e o
+    // Realtime pode não entregar eventos pra usuário anônimo (RLS
+    // bloqueia o que ele "enxerga" mudar) - esse polling garante que
+    // o número fica certo mesmo se o evento em tempo real não chegar.
+    intervalo = setInterval(buscarTotal, 20000);
+    return () => { if (canal) sb.removeChannel(canal); if (intervalo) clearInterval(intervalo); };
   }, []);
   useEffect(() => {
     if (totalUsuariosAnimado === totalUsuarios) return;
