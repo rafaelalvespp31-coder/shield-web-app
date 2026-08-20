@@ -5,8 +5,14 @@
 // O Mercado Pago chama essa função toda vez que o status de um pagamento
 // muda. A gente confere de verdade o status direto na API deles (nunca
 // confia só no que veio no corpo da notificação) e credita a carteira.
+//
+// Agora reconhece 3 métodos: Pix (tabela pix_cobrancas, como já era) e
+// cartão/boleto (tabela nova pagamentos_mercadopago). O fluxo de Pix não
+// mudou em nada - só foi adicionado um segundo lugar pra procurar caso
+// não ache na tabela do Pix.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { creditarWallet } from "../_shared/creditar-wallet.ts";
 
 Deno.serve(async (req) => {
   try {
@@ -41,45 +47,42 @@ Deno.serve(async (req) => {
       return new Response("ok", { status: 200 });
     }
 
-    // Busca a cobrança correspondente que a gente registrou ao criar o Pix.
-    const { data: cobranca, error: cobrancaErr } = await sb
+    // 1) Tenta achar como Pix primeiro - fluxo original, intocado.
+    const { data: cobrancaPix } = await sb
       .from("pix_cobrancas")
       .select("id, wallet_id, valor, status")
       .eq("mp_payment_id", String(paymentId))
       .maybeSingle();
 
-    if (cobrancaErr || !cobranca) {
-      console.error("Cobrança não encontrada pro payment_id:", paymentId);
+    if (cobrancaPix) {
+      if (cobrancaPix.status === "completed") return new Response("ok", { status: 200 });
+      const creditou = await creditarWallet(sb, cobrancaPix.wallet_id, cobrancaPix.valor, "Depósito via Pix");
+      if (creditou) {
+        await sb.from("pix_cobrancas").update({ status: "completed" }).eq("id", cobrancaPix.id);
+      }
       return new Response("ok", { status: 200 });
     }
 
-    // Evita creditar duas vezes se o Mercado Pago reenviar a notificação.
-    if (cobranca.status === "completed") {
+    // 2) Se não achou no Pix, procura em cartão/boleto.
+    const { data: cobrancaOutra } = await sb
+      .from("pagamentos_mercadopago")
+      .select("id, wallet_id, valor, status, metodo")
+      .eq("mp_payment_id", String(paymentId))
+      .maybeSingle();
+
+    if (cobrancaOutra) {
+      if (cobrancaOutra.status === "completed") return new Response("ok", { status: 200 });
+      const descricao = cobrancaOutra.metodo === "cartao"
+        ? "Depósito via cartão de crédito"
+        : "Depósito via boleto";
+      const creditou = await creditarWallet(sb, cobrancaOutra.wallet_id, cobrancaOutra.valor, descricao);
+      if (creditou) {
+        await sb.from("pagamentos_mercadopago").update({ status: "completed" }).eq("id", cobrancaOutra.id);
+      }
       return new Response("ok", { status: 200 });
     }
 
-    const { error: insertErr } = await sb.from("wallet_transactions").insert({
-      wallet_id: cobranca.wallet_id,
-      type: "credit",
-      amount: cobranca.valor,
-      status: "completed",
-      description: "Depósito via Pix",
-    });
-    if (insertErr) {
-      console.error("Falha ao inserir wallet_transaction:", insertErr.message);
-      return new Response("ok", { status: 200 });
-    }
-
-    const { error: rpcErr } = await sb.rpc("incrementar_saldo_wallet", {
-      p_wallet_id: cobranca.wallet_id,
-      p_valor: cobranca.valor,
-    });
-    if (rpcErr) {
-      console.error("Falha ao incrementar saldo (confira se a função incrementar_saldo_wallet existe):", rpcErr.message);
-    }
-
-    await sb.from("pix_cobrancas").update({ status: "completed" }).eq("id", cobranca.id);
-
+    console.error("Cobrança não encontrada (pix nem cartão/boleto) pro payment_id:", paymentId);
     return new Response("ok", { status: 200 });
   } catch (e) {
     console.error("Erro inesperado no webhook:", e);
