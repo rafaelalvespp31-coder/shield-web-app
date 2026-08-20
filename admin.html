@@ -359,7 +359,7 @@ async function aprovarCadastro(tipo, id, btn) {
     const tabela = tipo === 'empresa' ? 'empresas_parceiras' : 'usuarios_prestadores';
     const campos = tipo === 'empresa'
       ? { documents_status: 'aprovado', verified: true, documents_rejection_reason: null }
-      : { documents_status: 'aprovado', verificado: true, documents_rejection_reason: null };
+      : { documents_status: 'aprovado', verified: true, documents_rejection_reason: null };
     const { error } = await sb.from(tabela).update(campos).eq('id', id);
     if (error) throw error;
     renderDocumentos();
@@ -378,7 +378,7 @@ async function rejeitarCadastro(tipo, id, btn) {
     const tabela = tipo === 'empresa' ? 'empresas_parceiras' : 'usuarios_prestadores';
     const campos = tipo === 'empresa'
       ? { documents_status: 'rejeitado', verified: false, documents_rejection_reason: motivo || null }
-      : { documents_status: 'rejeitado', verificado: false, documents_rejection_reason: motivo || null };
+      : { documents_status: 'rejeitado', verified: false, documents_rejection_reason: motivo || null };
     const { error } = await sb.from(tabela).update(campos).eq('id', id);
     if (error) throw error;
     renderDocumentos();
@@ -465,60 +465,159 @@ function renderAba(tab) {
 }
 
 // ------------------------------------------------------------
-// ONLINE AGORA - todo prestador (autônomo ou vinculado) com
-// is_online = true nesse instante. Atualiza sozinho em tempo real:
-// o mesmo canal Realtime de usuarios_prestadores usado na aba
-// Documentos já dispara aqui também quando alguém liga/desliga.
+// ONLINE AGORA / BANIDOS - prestadores (autônomo ou vinculado) E
+// empresas parceiras. Sub-aba "Online agora" mostra quem está
+// is_online = true nesse instante, com ações de tirar do ar ou
+// banir. Sub-aba "Banidos" lista quem já foi banido, pra poder
+// desbanir. Atualiza sozinho em tempo real via Realtime.
 // ------------------------------------------------------------
-async function renderOnline() {
-  const conteudo = document.getElementById('conteudo');
-  conteudo.innerHTML = '<div class="loading">Carregando...</div>';
-  const { data, error } = await sb
-    .from('usuarios_prestadores')
-    .select('id, tipo_prestador, rating_avg, rating_count')
-    .eq('is_online', true)
-    .order('rating_avg', { ascending: false });
-  if (error) { conteudo.innerHTML = '<div class="empty">Erro ao carregar: ' + error.message + '</div>'; return; }
-  if (abaAtiva !== 'online') return; // trocou de aba enquanto carregava
+let abaOnline = 'online';
 
-  const lista = data || [];
+async function buscarOnlineOuBanidos(filtro) {
+  const [{ data: prestadores, error: errP }, { data: empresas, error: errE }] = await Promise.all([
+    sb.from('usuarios_prestadores')
+      .select('id, tipo_prestador, rating_avg, rating_count, banido, banido_motivo')
+      .eq(filtro, true),
+    sb.from('empresas_parceiras')
+      .select('id, razao_social, telefone, banido, banido_motivo')
+      .eq(filtro, true),
+  ]);
+  if (errP) throw errP;
+  if (errE) throw errE;
 
-  // Perfis buscados à parte (mesmo motivo da aba Documentos: mais de
-  // uma FK entre usuarios_prestadores e profiles deixa o embed ambíguo).
+  const idsPrestadores = (prestadores || []).map((p) => p.id);
   let mapaPerfis = {};
-  if (lista.length > 0) {
-    const { data: perfis } = await sb
+  if (idsPrestadores.length > 0) {
+    const { data: perfis, error: errPerfis } = await sb
       .from('profiles')
       .select('id, full_name, phone')
-      .in('id', lista.map((p) => p.id));
+      .in('id', idsPrestadores);
+    if (errPerfis) throw errPerfis;
     (perfis || []).forEach((pf) => { mapaPerfis[pf.id] = pf; });
   }
 
-  const topo = `
-    <div class="onlineTopo">
-      <span class="onlineContagem"><span class="pulseDot"></span>Prestadores online agora: <b>${lista.length}</b></span>
+  const listaPrestadores = (prestadores || []).map((p) => {
+    const perfil = mapaPerfis[p.id];
+    return {
+      tipo: 'prestador',
+      id: p.id,
+      nome: perfil ? perfil.full_name : 'Sem nome',
+      telefone: perfil ? perfil.phone : '-',
+      subtitulo: p.tipo_prestador === 'vinculado' ? 'Vinculado (empresa)' : 'Autônomo',
+      rating: p.rating_avg,
+      ratingCount: p.rating_count,
+      banido: p.banido,
+      banido_motivo: p.banido_motivo,
+    };
+  });
+
+  const listaEmpresas = (empresas || []).map((e) => ({
+    tipo: 'empresa',
+    id: e.id,
+    nome: e.razao_social,
+    telefone: e.telefone,
+    subtitulo: 'Empresa Parceira',
+    rating: null,
+    ratingCount: null,
+    banido: e.banido,
+    banido_motivo: e.banido_motivo,
+  }));
+
+  return [...listaPrestadores, ...listaEmpresas];
+}
+
+async function colocarOffline(tipo, id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Colocando offline...'; }
+  try {
+    const tabela = tipo === 'empresa' ? 'empresas_parceiras' : 'usuarios_prestadores';
+    const campos = tipo === 'empresa' ? { is_online: false } : { is_online: false, is_available: false };
+    const { error } = await sb.from(tabela).update(campos).eq('id', id);
+    if (error) throw error;
+    renderOnline();
+  } catch (e) {
+    alert('Não foi possível colocar offline: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Colocar Offline'; }
+  }
+}
+window.colocarOffline = colocarOffline;
+
+async function toggleBanimento(tipo, id, banirAgora, btn) {
+  const motivo = banirAgora ? prompt('Motivo do banimento (opcional):') : null;
+  if (btn) { btn.disabled = true; btn.textContent = banirAgora ? 'Banindo...' : 'Desbanindo...'; }
+  try {
+    const tabela = tipo === 'empresa' ? 'empresas_parceiras' : 'usuarios_prestadores';
+    const campos = banirAgora
+      ? { banido: true, banido_motivo: motivo || null, is_online: false }
+      : { banido: false, banido_motivo: null };
+    if (tipo !== 'empresa' && banirAgora) campos.is_available = false;
+    const { error } = await sb.from(tabela).update(campos).eq('id', id);
+    if (error) throw error;
+    renderOnline();
+  } catch (e) {
+    alert('Não foi possível atualizar o banimento: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = banirAgora ? 'Banir' : 'Desbanir'; }
+  }
+}
+window.toggleBanimento = toggleBanimento;
+
+function trocarAbaOnline(sub) {
+  abaOnline = sub;
+  renderOnline();
+}
+window.trocarAbaOnline = trocarAbaOnline;
+
+async function renderOnline() {
+  const conteudo = document.getElementById('conteudo');
+  const subTabsHtml = `
+    <div class="subTabs">
+      <button class="subTabBtn ${abaOnline === 'online' ? 'active' : ''}" onclick="trocarAbaOnline('online')">Online agora</button>
+      <button class="subTabBtn ${abaOnline === 'banidos' ? 'active' : ''}" onclick="trocarAbaOnline('banidos')">Banidos</button>
     </div>`;
+  conteudo.innerHTML = subTabsHtml + '<div class="loading">Carregando...</div>';
+
+  let lista;
+  try {
+    lista = await buscarOnlineOuBanidos(abaOnline === 'online' ? 'is_online' : 'banido');
+  } catch (e) {
+    conteudo.innerHTML = subTabsHtml + '<div class="empty">Erro ao carregar: ' + e.message + '</div>';
+    return;
+  }
+  if (abaAtiva !== 'online') return; // trocou de aba enquanto carregava
+
+  const topo = abaOnline === 'online'
+    ? `<div class="onlineTopo"><span class="onlineContagem"><span class="pulseDot"></span>Online agora: <b>${lista.length}</b></span></div>`
+    : `<div class="onlineTopo"><span class="onlineContagem">Banidos: <b>${lista.length}</b></span></div>`;
 
   if (lista.length === 0) {
-    conteudo.innerHTML = topo + '<div class="empty">Nenhum prestador online no momento.</div>';
+    conteudo.innerHTML = subTabsHtml + topo + '<div class="empty">' +
+      (abaOnline === 'online' ? 'Ninguém online no momento.' : 'Ninguém banido no momento.') +
+      '</div>';
     return;
   }
 
-  conteudo.innerHTML = topo + lista.map((p) => {
-    const perfil = mapaPerfis[p.id];
-    return `
+  conteudo.innerHTML = subTabsHtml + topo + lista.map((p) => `
     <div class="onlineCard">
       <div class="esquerda">
-        <span class="pulseDot"></span>
+        ${abaOnline === 'online' ? '<span class="pulseDot"></span>' : ''}
         <div>
-          <div class="nome">${perfil ? perfil.full_name : 'Sem nome'}</div>
-          <div class="detalhe">${p.tipo_prestador === 'vinculado' ? 'Vinculado (empresa)' : 'Autônomo'} · Tel: ${perfil ? perfil.phone : '-'}</div>
+          <div class="nome">${p.nome || 'Sem nome'}</div>
+          <div class="detalhe">${p.subtitulo} · Tel: ${p.telefone || '-'}</div>
+          ${p.banido && p.banido_motivo ? `<div class="motivoRejeitado">Motivo do ban: ${p.banido_motivo}</div>` : ''}
         </div>
       </div>
-      <span class="rating">★ ${(p.rating_avg || 0).toFixed(1)} (${p.rating_count || 0})</span>
+      <div class="direita">
+        ${p.rating != null ? `<span class="rating">★ ${Number(p.rating || 0).toFixed(1)} (${p.ratingCount || 0})</span>` : ''}
+        ${abaOnline === 'online' ? `
+          <button class="docBtn" onclick="colocarOffline('${p.tipo}','${p.id}', this)">Colocar Offline</button>
+          <button class="rejeitarBtn" onclick="toggleBanimento('${p.tipo}','${p.id}', true, this)">Banir</button>
+        ` : `
+          <button class="aprovarBtn" onclick="toggleBanimento('${p.tipo}','${p.id}', false, this)">Desbanir</button>
+        `}
+      </div>
     </div>
-  `; }).join('');
+  `).join('');
 }
+
 
 // Tempo real: qualquer INSERT/UPDATE em usuarios_prestadores ou
 // empresas_parceiras atualiza a aba Documentos sozinha, sem F5 -
@@ -535,6 +634,7 @@ function iniciarRealtimeDocumentos() {
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'empresas_parceiras' }, () => {
       if (abaAtiva === 'documentos') renderDocumentos();
+      if (abaAtiva === 'online') renderOnline();
     })
     .subscribe();
 }
