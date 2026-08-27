@@ -2218,6 +2218,21 @@ function CadastroPrestadorModal({
   });
   const [temCodigoConvite, setTemCodigoConvite] = useState(false);
   const [categorias, setCategorias] = useState([]);
+  const [categoriasDisponiveis, setCategoriasDisponiveis] = useState([]);
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const { data, error } = await sb.from('service_categories').select('name, niches(slug)').not('niche_id', 'is', null);
+        if (error) throw error;
+        const nomes = (data || [])
+          .filter(c => !c.niches || c.niches.slug !== 'perfil_tatico')
+          .map(c => c.name);
+        if (!cancel) setCategoriasDisponiveis(nomes);
+      } catch (e) { console.warn('Falha ao buscar categorias de atendimento:', e.message); }
+    })();
+    return () => { cancel = true; };
+  }, []);
   const [antecedentes, setAntecedentes] = useState(null);
   const [fotoRg, setFotoRg] = useState(null);
   const [errors, setErrors] = useState({});
@@ -2455,9 +2470,11 @@ function CadastroPrestadorModal({
     onClick: next
   }, "Continuar")), step === 1 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
     className: "text-[11px] uppercase tracking-wider text-slate-400 mb-2 block"
-  }, "Categorias de atendimento"), /*#__PURE__*/React.createElement("div", {
+  }, "Categorias de atendimento"), categoriasDisponiveis.length === 0 && /*#__PURE__*/React.createElement("p", {
+    className: "text-slate-500 text-xs mb-2"
+  }, "Carregando categorias..."), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-2 gap-2 mb-2"
-  }, CATEGORIAS.map(cat => /*#__PURE__*/React.createElement("button", {
+  }, categoriasDisponiveis.map(cat => /*#__PURE__*/React.createElement("button", {
     key: cat,
     type: "button",
     onClick: () => toggleCategoria(cat),
