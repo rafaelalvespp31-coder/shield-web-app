@@ -101,6 +101,25 @@
   .toggleSwitch .bolinha { position: absolute; top: 3px; width: 18px; height: 18px; border-radius: 999px; background: #fff; transition: left 0.2s; }
   .toggleSwitch.off .bolinha { left: 3px; }
   .toggleSwitch.on .bolinha { left: 23px; }
+
+  /* CATEGORIAS POR PRESTADOR */
+  .prestadorCatCard { background: #121A22; border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; margin-bottom: 10px; overflow: hidden; }
+  .prestadorCatHeader { padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; gap: 10px; }
+  .prestadorCatHeader .badgeQtd { font-size: 10.5px; padding: 3px 9px; border-radius: 999px; background: rgba(0,217,255,0.12); color: #67E8F9; font-weight: 700; white-space: nowrap; }
+  .prestadorCatBody { padding: 0 16px 16px; border-top: 1px solid rgba(255,255,255,0.06); }
+  .nichoGrupo { margin-top: 12px; }
+  .nichoGrupo .nichoTitulo { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #8A97A3; margin-bottom: 6px; }
+  .catCheckRow { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 12.5px; color: #D1D5DB; cursor: pointer; }
+  .catCheckRow input { width: 16px; height: 16px; accent-color: #10B981; cursor: pointer; }
+  .catCheckRow.tatico { color: #F87171; }
+
+  /* ZONAS DE RISCO */
+  .zonaForm { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .zonaForm input[type="text"] { flex: 1 1 200px; height: 38px; padding: 0 12px; border-radius: 10px; background: #0A0F14; border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px; outline: none; }
+  .zonaForm input[type="number"] { width: 90px; height: 38px; padding: 0 10px; border-radius: 10px; background: #0A0F14; border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 13px; outline: none; }
+  .zonaForm button { height: 38px; padding: 0 16px; border-radius: 10px; background: #F59E0B; color: #0A0F14; font-weight: 800; font-size: 12px; border: none; cursor: pointer; white-space: nowrap; }
+  .zonaCard .pct { font-size: 15px; font-weight: 900; color: #F87171; }
+  .zonaCard button.remover { height: 32px; padding: 0 12px; border-radius: 8px; background: transparent; border: 1px solid rgba(239,68,68,0.4); color: #F87171; font-size: 11px; font-weight: 700; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -138,6 +157,8 @@
       <button class="tabBtn" data-tab="online">Online Agora</button>
       <button class="tabBtn" data-tab="contas">Todas as Contas</button>
       <button class="tabBtn" data-tab="tatico">Perfil Tático</button>
+      <button class="tabBtn" data-tab="categoriasPrestador">Categorias por Prestador</button>
+      <button class="tabBtn" data-tab="zonasRisco">Zonas de Risco</button>
     </div>
 
     <div id="conteudo"><div class="loading">Carregando...</div></div>
@@ -604,6 +625,231 @@ async function renderTatico() {
   }
 }
 
+// ------------------------------------------------------------
+// CATEGORIAS POR PRESTADOR - liga/desliga direto na tabela
+// provider_categories, que é o que o motor de match usa pra saber
+// quais demandas mandar pra cada prestador. Expande um prestador
+// por vez (busca os vínculos dele só quando abre, não carrega tudo
+// de uma vez).
+// ------------------------------------------------------------
+let prestadoresCatCache = [];
+let categoriasCatCache = [];
+let buscaPrestadorCatTexto = '';
+let expandidoPrestadorId = null;
+let vinculosPrestadorAtual = new Set();
+
+function filtrarPrestadoresCat() {
+  const termo = buscaPrestadorCatTexto.trim().toLowerCase();
+  if (!termo) return prestadoresCatCache;
+  return prestadoresCatCache.filter((p) => (p.full_name || '').toLowerCase().includes(termo));
+}
+
+async function abrirCategoriasPrestador(id) {
+  if (expandidoPrestadorId === id) {
+    expandidoPrestadorId = null;
+    desenharCategoriasPrestador();
+    return;
+  }
+  expandidoPrestadorId = id;
+  vinculosPrestadorAtual = new Set();
+  desenharCategoriasPrestador();
+  try {
+    const { data, error } = await sb.from('provider_categories').select('category_id').eq('provider_id', id);
+    if (error) throw error;
+    vinculosPrestadorAtual = new Set((data || []).map((r) => r.category_id));
+  } catch (e) {
+    console.error('Erro ao buscar vínculos:', e.message);
+  }
+  desenharCategoriasPrestador();
+}
+window.abrirCategoriasPrestador = abrirCategoriasPrestador;
+
+async function toggleCategoriaPrestador(providerId, categoryId, marcado, checkboxEl) {
+  checkboxEl.disabled = true;
+  try {
+    if (marcado) {
+      const { error } = await sb.from('provider_categories').insert({ provider_id: providerId, category_id: categoryId });
+      if (error) throw error;
+      vinculosPrestadorAtual.add(categoryId);
+    } else {
+      const { error } = await sb.from('provider_categories').delete().eq('provider_id', providerId).eq('category_id', categoryId);
+      if (error) throw error;
+      vinculosPrestadorAtual.delete(categoryId);
+    }
+  } catch (e) {
+    alert('Não foi possível atualizar: ' + e.message);
+    checkboxEl.checked = !marcado;
+  } finally {
+    checkboxEl.disabled = false;
+    const badge = document.getElementById('badgeQtd_' + providerId);
+    if (badge) badge.textContent = vinculosPrestadorAtual.size + ' categorias';
+  }
+}
+window.toggleCategoriaPrestador = toggleCategoriaPrestador;
+
+function desenharCategoriasPrestador() {
+  const conteudo = document.getElementById('conteudo');
+  const buscaHtml = `
+    <input
+      class="buscaContas"
+      placeholder="Buscar prestador por nome..."
+      value="${buscaPrestadorCatTexto.replace(/"/g, '&quot;')}"
+      oninput="buscaPrestadorCatTexto = this.value; desenharCategoriasPrestador();"
+    >`;
+
+  const lista = filtrarPrestadoresCat();
+  if (lista.length === 0) {
+    conteudo.innerHTML = buscaHtml + '<div class="empty">Nenhum prestador encontrado.</div>';
+    return;
+  }
+
+  // agrupa as categorias por nicho, uma vez só
+  const grupos = {};
+  categoriasCatCache.forEach((c) => {
+    const slug = c.niches ? c.niches.slug : 'outros';
+    const nomeNicho = c.niches ? c.niches.name : 'Outros';
+    if (!grupos[slug]) grupos[slug] = { nome: nomeNicho, itens: [] };
+    grupos[slug].itens.push(c);
+  });
+
+  conteudo.innerHTML = buscaHtml + lista.map((p) => {
+    const expandido = expandidoPrestadorId === p.id;
+    let corpoHtml = '';
+    if (expandido) {
+      corpoHtml = '<div class="prestadorCatBody">' +
+        Object.keys(grupos).map((slug) => {
+          const grupo = grupos[slug];
+          return `
+            <div class="nichoGrupo">
+              <div class="nichoTitulo">${grupo.nome}</div>
+              ${grupo.itens.map((c) => {
+                const marcado = vinculosPrestadorAtual.has(c.id);
+                const classeExtra = slug === 'perfil_tatico' ? ' tatico' : '';
+                return `
+                  <label class="catCheckRow${classeExtra}">
+                    <input type="checkbox" ${marcado ? 'checked' : ''} onchange="toggleCategoriaPrestador('${p.id}','${c.id}', this.checked, this)">
+                    ${c.name}${slug === 'perfil_tatico' ? ' (armado)' : ''}
+                  </label>`;
+              }).join('')}
+            </div>`;
+        }).join('') +
+      '</div>';
+    }
+    return `
+      <div class="prestadorCatCard">
+        <div class="prestadorCatHeader" onclick="abrirCategoriasPrestador('${p.id}')">
+          <div>
+            <div class="nome">${p.full_name || 'Sem nome'}</div>
+            <div class="detalhe">${p.tipo_prestador === 'vinculado' ? 'Vinculado (empresa)' : 'Autônomo'} · Tel: ${p.phone || '-'}</div>
+          </div>
+          <span class="badgeQtd" id="badgeQtd_${p.id}">${expandido ? vinculosPrestadorAtual.size + ' categorias' : (p.tipo_prestador ? 'ver categorias' : '')}</span>
+        </div>
+        ${corpoHtml}
+      </div>`;
+  }).join('');
+}
+window.desenharCategoriasPrestador = desenharCategoriasPrestador;
+
+async function renderCategoriasPrestador() {
+  const conteudo = document.getElementById('conteudo');
+  conteudo.innerHTML = '<div class="loading">Carregando...</div>';
+  try {
+    const [{ data: prestadores, error: errP }, { data: cats, error: errC }] = await Promise.all([
+      sb.rpc('admin_listar_prestadores_tatico'),
+      sb.from('service_categories').select('id, name, niche_id, niches(slug, name)').not('niche_id', 'is', null).order('name'),
+    ]);
+    if (errP) throw errP;
+    if (errC) throw errC;
+    prestadoresCatCache = prestadores || [];
+    categoriasCatCache = cats || [];
+    expandidoPrestadorId = null;
+    desenharCategoriasPrestador();
+  } catch (e) {
+    conteudo.innerHTML = '<div class="empty">Erro ao carregar: ' + e.message + '</div>';
+  }
+}
+
+// ------------------------------------------------------------
+// ZONAS DE RISCO - lista de bairros com multiplicador de preço
+// (usado pela função calcular_ajuste_dinamico_preco no banco).
+// ------------------------------------------------------------
+async function adicionarZonaRisco() {
+  const bairroInput = document.getElementById('zonaBairroInput');
+  const pctInput = document.getElementById('zonaPctInput');
+  const bairro = bairroInput.value.trim();
+  const pct = Number(pctInput.value);
+  if (!bairro) { alert('Digite o nome do bairro.'); return; }
+  if (!pct || pct <= 0 || pct > 35) { alert('Digite um percentual entre 1 e 35.'); return; }
+  try {
+    const { error } = await sb.from('zonas_risco').upsert({ bairro, multiplicador: pct / 100, ativo: true }, { onConflict: 'bairro' });
+    if (error) throw error;
+    bairroInput.value = ''; pctInput.value = '';
+    renderZonasRisco();
+  } catch (e) {
+    alert('Não foi possível adicionar: ' + e.message);
+  }
+}
+window.adicionarZonaRisco = adicionarZonaRisco;
+
+async function toggleAtivaZonaRisco(id, ativarAgora) {
+  try {
+    const { error } = await sb.from('zonas_risco').update({ ativo: ativarAgora }).eq('id', id);
+    if (error) throw error;
+    renderZonasRisco();
+  } catch (e) {
+    alert('Não foi possível atualizar: ' + e.message);
+  }
+}
+window.toggleAtivaZonaRisco = toggleAtivaZonaRisco;
+
+async function removerZonaRisco(id, nome) {
+  if (!confirm('Remover "' + nome + '" da lista de zonas de risco?')) return;
+  try {
+    const { error } = await sb.from('zonas_risco').delete().eq('id', id);
+    if (error) throw error;
+    renderZonasRisco();
+  } catch (e) {
+    alert('Não foi possível remover: ' + e.message);
+  }
+}
+window.removerZonaRisco = removerZonaRisco;
+
+async function renderZonasRisco() {
+  const conteudo = document.getElementById('conteudo');
+  const formHtml = `
+    <div class="zonaForm">
+      <input type="text" id="zonaBairroInput" placeholder="Nome do bairro (ex: Centro)">
+      <input type="number" id="zonaPctInput" placeholder="% (ex: 15)" min="1" max="35">
+      <button onclick="adicionarZonaRisco()">Adicionar</button>
+    </div>
+    <p style="color:#8A97A3;font-size:11.5px;margin-bottom:14px;">O nome do bairro é comparado com o texto do endereço que o cliente digita - use o nome mais comum/simples possível.</p>`;
+  conteudo.innerHTML = formHtml + '<div class="loading">Carregando...</div>';
+  try {
+    const { data, error } = await sb.from('zonas_risco').select('id, bairro, multiplicador, ativo').order('bairro');
+    if (error) throw error;
+    const lista = data || [];
+    if (lista.length === 0) {
+      conteudo.innerHTML = formHtml + '<div class="empty">Nenhuma zona de risco cadastrada ainda.</div>';
+      return;
+    }
+    conteudo.innerHTML = formHtml + lista.map((z) => `
+      <div class="card zonaCard">
+        <div class="info">
+          <div class="nome">${z.bairro}</div>
+          <div class="detalhe">${z.ativo ? 'Ativa' : 'Desativada'}</div>
+        </div>
+        <div class="direita">
+          <span class="pct">+${Math.round(z.multiplicador * 100)}%</span>
+          <button class="acao" style="background:${z.ativo ? '#374151' : '#10B981'};color:#fff;" onclick="toggleAtivaZonaRisco('${z.id}', ${!z.ativo})">${z.ativo ? 'Desativar' : 'Ativar'}</button>
+          <button class="remover" onclick="removerZonaRisco('${z.id}', '${z.bairro.replace(/'/g, "\\'")}')">Remover</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    conteudo.innerHTML = formHtml + '<div class="empty">Erro ao carregar: ' + e.message + '</div>';
+  }
+}
+
 function renderAba(tab) {
   abaAtiva = tab;
   document.querySelectorAll('.tabBtn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
@@ -615,6 +861,8 @@ function renderAba(tab) {
   else if (tab === 'online') renderOnline();
   else if (tab === 'contas') renderContas();
   else if (tab === 'tatico') renderTatico();
+  else if (tab === 'categoriasPrestador') renderCategoriasPrestador();
+  else if (tab === 'zonasRisco') renderZonasRisco();
 }
 
 // ------------------------------------------------------------
